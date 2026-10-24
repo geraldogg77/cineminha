@@ -12,10 +12,12 @@ const PRE = {
   bal: {res: 1080, fps: 30, br: 6, prio: 'motion'}, alta: {res: 1080, fps: 60, br: 12, prio: 'motion'},
   max: {res: 1080, fps: 60, br: 25, prio: 'motion'}, txt: {res: 1080, fps: 30, br: 10, prio: 'detail'}
 };
-const S = {theme: 'dark', accent: '#F2B544', calm: false, res: 1080, fps: 60, br: 12, prio: 'motion', codec: 'auto', abr: 320, max: 2};
+const S = {theme: 'dark', accent: '#5B7CFA', calm: false, res: 1080, fps: 60, br: 12, prio: 'motion', codec: 'auto', abr: 320, max: 2};
 try { Object.assign(S, JSON.parse(localStorage.getItem('tl-set') || '{}')); } catch (e) {}
 if (!['dark', 'classic', 'oled', 'light'].includes(S.theme)) S.theme = 'dark';
-if (!/^#[0-9a-f]{6}$/i.test(S.accent)) S.accent = '#F2B544';
+if (!/^#[0-9a-f]{6}$/i.test(S.accent)) S.accent = '#5B7CFA';
+/* versão 8 tinha âmbar como padrão: quem ficou com ele sem escolher volta ao azul uma única vez */
+try { if (!localStorage.getItem('tl-acc2')) { if (S.accent.toUpperCase() === '#F2B544') S.accent = '#5B7CFA'; localStorage.setItem('tl-acc2', '1'); } } catch (e) {}
 let peer, stream, call, hostConn, me = '', full = false, paused = false, last = {}, retryT = 0, unread = 0;
 const viewers = new Map();
 const clean = s => String(s || '').trim().slice(0, 20);

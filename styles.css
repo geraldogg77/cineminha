@@ -4,7 +4,7 @@
 
 /* ---------- Tokens ---------- */
 :root{
-  --accent:#F2B544; --on-accent:#1A1206;
+  --accent:#5B7CFA; --on-accent:#FFFFFF;
   --live:#FF4D5E; --ok:#3DD68C; --warn:#F5A524;
   --ease:cubic-bezier(.22,1,.36,1);       /* saída suave: entradas e respostas */
   --ease-io:cubic-bezier(.65,0,.35,1);    /* movimento na tela */
