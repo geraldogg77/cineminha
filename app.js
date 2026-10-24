@@ -419,7 +419,16 @@ async function openInput(key) {
     toast(key === 'mic' ? 'Não foi possível usar o microfone. Verifique a permissão no cadeado ao lado do endereço.' : 'Não foi possível abrir a entrada extra. Confira o dispositivo escolhido.', 'err');
   }
 }
+/* Som da tela (sistema inteiro) e Som dos apps não podem ficar ligados juntos:
+   o primeiro pegaria o som dos apps desmarcados. Ligar um desliga o outro. */
+function exclusive(k) {
+  if (k === 'mxApps' && S.mxApps && S.mxScreen) { S.mxScreen = false; gain('screen'); toast('Som da tela desligado: agora só entram os apps marcados.', 'info'); }
+  else if (k === 'mxScreen' && S.mxScreen && S.mxApps && HP.ok) { S.mxApps = false; gain('apps'); helperStream(); toast('Som dos apps desligado: o som da tela já leva o computador inteiro.', 'info'); }
+  else return;
+  save(); sync(); paintApps();
+}
 function mixChanged(k) {
+  exclusive(k);
   if (k === 'mxScreen' || k === 'vScreen') { gain('screen'); paintApps(); }
   else if (k === 'vMic') gain('mic');
   else if (k === 'vExtra') gain('extra');
@@ -550,8 +559,9 @@ function helperConnect(loud) {
     HP.ok = true; HP.error = null; clearInterval(HP.poll); HP.poll = 0;
     const first = !S.helperSeen;
     S.helperSeen = true;
-    if (first) { S.mxApps = true; if (S.mxScreen) { S.mxScreen = false; toast('Cineminha Áudio conectado. Desliguei o som da tela para o áudio não sair duplicado.', 'ok'); } else toast('Cineminha Áudio conectado', 'ok'); }
-    else if (loud) toast('Cineminha Áudio conectado', 'ok');
+    if (first) S.mxApps = true;
+    if (S.mxApps && S.mxScreen) { S.mxScreen = false; gain('screen'); toast('Cineminha Áudio conectado. Desliguei o som da tela para valer só os apps marcados.', 'ok'); }
+    else if (first || loud) toast('Cineminha Áudio conectado', 'ok');
     save(); sync();
     try { await helperNode(); } catch (e) { toast('Este navegador não aceita o som dos apps. Use Chrome, Edge ou Brave atualizado.', 'err'); }
     helperSend({t: 'prefs', apps: S.appPrefs}); helperStream(); paintApps();
@@ -592,7 +602,7 @@ function paintApps() {
   const head = document.createElement('p'); head.className = 'appnote';
   head.textContent = HP.apps.length ? 'Desmarque um app para o som dele ficar de fora. Você continua ouvindo normalmente.' : 'Nenhum app tocando som agora. Abra um programa com áudio e ele aparece aqui.';
   list.append(head);
-  if (S.mxScreen && S.mxApps) { const w = document.createElement('p'); w.className = 'warn2'; w.textContent = 'O Som da tela está ligado e leva o som do computador inteiro. Desligue-o para valer só os apps marcados.'; list.append(w); }
+  if (S.mxScreen && S.mxApps) { const w = document.createElement('p'); w.className = 'warn2'; w.textContent = 'O Som da tela está ligado e leva o som do computador inteiro.'; list.append(w); }
   if (HP.error) { const er = document.createElement('p'); er.className = 'apperr'; er.textContent = HP.error; list.append(er); }
   HP.apps.forEach(a => {
     const l = document.createElement('label'); l.className = 'app' + (a.active ? ' on' : ''); l.dataset.key = a.key;
