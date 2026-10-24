@@ -2,156 +2,184 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tela ao vivo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E0C12">
+<meta name="description" content="Cineminha: transmita sua tela para os amigos, direto do navegador, com chat ao vivo.">
+<title>Cineminha</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23F2B544'/%3E%3Cpath d='M12 10.5v11l9-5.5z' fill='%23140F06'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=7">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=8">
 </head>
-<body>
+<body class="booting">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-<symbol id="monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
-<symbol id="max" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></symbol>
-<symbol id="cfg" viewBox="0 0 24 24"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11M21 18h-1"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
-<symbol id="vol" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
-<symbol id="mute" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 6m0-6-5 6"/></symbol>
-<symbol id="pip" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="6" height="4" rx="1"/></symbol>
-<symbol id="theater" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="2"/></symbol>
-<symbol id="chat" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
-<symbol id="stats" viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></symbol>
-<symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
-<symbol id="play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
-<symbol id="copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
-<symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
-<symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-<symbol id="userplus" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/></symbol>
-<symbol id="headset" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></symbol>
-<symbol id="stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+<symbol id="i-logo" viewBox="0 0 24 24"><path d="M9 7.5v9l7.5-4.5z" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+<symbol id="i-max" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></symbol>
+<symbol id="i-cfg" viewBox="0 0 24 24"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11M21 18h-1"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+<symbol id="i-vol" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
+<symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 6m0-6-5 6"/></symbol>
+<symbol id="i-pip" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="6" height="4" rx="1"/></symbol>
+<symbol id="i-theater" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="2"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></symbol>
+<symbol id="i-stats" viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
+<symbol id="i-userplus" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/></symbol>
+<symbol id="i-headset" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
 </defs></svg>
 
-<nav class="rail">
- <button class="srv home" title="Início" aria-label="Início"><svg class="i big"><use href="#monitor"/></svg></button>
+<nav class="rail" aria-label="Salas">
+ <div class="brand" data-tip="Cineminha"><svg class="i"><use href="#i-logo"/></svg></div>
  <div class="sep"></div>
- <div class="rw" id="rw"><div class="pill"></div><button class="srv room on" id="roomIcon" title="Sala de transmissão">TL</button></div>
- <button class="srv add h-only" id="newRoom" title="Criar nova sala" aria-label="Criar nova sala"><svg class="i big"><use href="#plus"/></svg></button>
+ <div class="rw" id="rw"><span class="pill"></span><button class="srv room on" id="roomIcon" data-tip="Sala atual" aria-label="Sala atual">?</button></div>
+ <button class="srv add h-only" id="newRoom" data-tip="Criar nova sala" aria-label="Criar nova sala"><svg class="i"><use href="#i-plus"/></svg></button>
 </nav>
 
-<aside class="side">
- <div class="sbtn" id="roomName">Sala de transmissão</div>
+<aside class="side" id="side">
+ <div class="sbtn"><span class="dotl" id="sideDot"></span><b id="roomName">Sala</b></div>
  <div class="chs">
-  <button class="nav act"><svg class="i"><use href="#monitor"/></svg>Transmissão</button>
-  <button class="nav" data-act="chat"><svg class="i"><use href="#chat"/></svg>Chat</button>
-  <button class="nav h-only" data-act="invite"><svg class="i"><use href="#userplus"/></svg>Convidar</button>
-  <button class="nav" data-act="settings"><svg class="i"><use href="#cfg"/></svg>Configurações</button>
-  <div class="cat" id="memTitle">Membros</div>
-  <div id="members"></div>
+  <button class="nav act" data-act="focusStage"><svg class="i"><use href="#i-monitor"/></svg>Transmissão<span class="navbadge" id="navLive" hidden>ao vivo</span></button>
+  <button class="nav" data-act="chat"><svg class="i"><use href="#i-chat"/></svg>Chat<span class="navbadge n" id="unread" hidden>0</span></button>
+  <button class="nav h-only" data-act="invite"><svg class="i"><use href="#i-userplus"/></svg>Convidar</button>
+  <button class="nav" data-act="settings"><svg class="i"><use href="#i-cfg"/></svg>Configurações</button>
+  <div class="cat" id="memTitle">Na sala</div>
+  <div id="members" class="members"></div>
  </div>
  <div class="bottom">
   <div class="vc" id="vc" hidden>
-   <div class="vt"><svg class="i ok"><use href="#stats"/></svg><div><b>Transmissão ao vivo</b><small id="vcS"></small></div></div>
+   <div class="vt"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><div><b id="vcT">Você está ao vivo</b><small id="vcS">Conectando…</small></div></div>
    <div class="vb">
-    <button class="ibtn h-only" data-act="pause" title="Pausar a imagem (P)"><svg class="i"><use href="#pause"/></svg></button>
-    <button class="ibtn" data-act="pip" title="Imagem sobre imagem"><svg class="i"><use href="#pip"/></svg></button>
-    <button class="ibtn" data-act="fs" title="Tela cheia (F)"><svg class="i"><use href="#max"/></svg></button>
-    <button class="ibtn h-only stopB" id="vcStop" title="Parar transmissão"><svg class="i"><use href="#stop"/></svg></button>
+    <button class="ibtn h-only" data-act="pause" data-tip="Pausar imagem" data-kbd="P" aria-label="Pausar imagem"><svg class="i"><use href="#i-pause"/></svg></button>
+    <button class="ibtn" data-act="pip" data-tip="Imagem sobre imagem" aria-label="Imagem sobre imagem"><svg class="i"><use href="#i-pip"/></svg></button>
+    <button class="ibtn" data-act="fs" data-tip="Tela cheia" data-kbd="F" aria-label="Tela cheia"><svg class="i"><use href="#i-max"/></svg></button>
+    <button class="ibtn h-only stopB" id="vcStop" data-tip="Parar transmissão" aria-label="Parar transmissão"><svg class="i"><use href="#i-stop"/></svg></button>
    </div>
   </div>
-  <div class="user"><div class="av on mepic" id="meAv"></div><div class="ui"><b id="meName"></b><small id="meRole"></small></div><span class="sp"></span>
-   <button class="ibtn v-only" id="headB" data-act="mute" title="Mudo (M)"><svg class="i"><use href="#headset"/></svg></button>
-   <button class="ibtn" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button></div>
+  <div class="user"><div class="av on mepic" id="meAv"></div><div class="ui"><b id="meName">Você</b><small id="meRole"></small></div><span class="sp"></span>
+   <button class="ibtn v-only" id="headB" data-act="mute" data-tip="Som" data-kbd="M" aria-label="Ativar ou desativar som"><svg class="i"><use href="#i-headset"/></svg></button>
+   <button class="ibtn" data-act="settings" data-tip="Configurações" aria-label="Configurações"><svg class="i"><use href="#i-cfg"/></svg></button></div>
  </div>
 </aside>
+<div class="sidescrim" id="sideScrim"></div>
 
 <main class="main">
- <div class="top"><svg class="i mut"><use href="#monitor"/></svg><span id="roomT">Transmissão</span><span class="badge" id="badge">OFFLINE</span><span class="sp"></span><small id="count"></small>
-  <button class="ibtn t h-only" data-act="invite" title="Convidar: copiar o link"><svg class="i"><use href="#userplus"/></svg></button>
-  <button class="ibtn t" data-act="chat" title="Mostrar ou ocultar o chat (C)"><svg class="i"><use href="#chat"/></svg></button>
-  <button class="ibtn t" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button>
- </div>
+ <header class="top">
+  <button class="ibtn t menuB" id="menuB" aria-label="Abrir menu"><svg class="i"><use href="#i-menu"/></svg></button>
+  <h1 id="roomT">Sala</h1><span class="badge" id="badge"><i></i><span id="badgeT">offline</span></span>
+  <span class="sp"></span><small id="count"></small>
+  <button class="ibtn t h-only" data-act="invite" data-tip="Copiar link do convite" aria-label="Copiar link do convite"><svg class="i"><use href="#i-userplus"/></svg></button>
+  <button class="ibtn t" data-act="chat" data-tip="Mostrar ou ocultar chat" data-kbd="C" aria-label="Mostrar ou ocultar chat"><svg class="i"><use href="#i-chat"/></svg></button>
+  <button class="ibtn t" data-act="settings" data-tip="Configurações" aria-label="Configurações"><svg class="i"><use href="#i-cfg"/></svg></button>
+ </header>
  <div class="body">
   <div class="center">
-   <section class="stage" id="stage">
+   <section class="stage" id="stage" aria-label="Tela da transmissão">
     <video id="v" autoplay playsinline muted></video>
     <div class="ph" id="ph">
+     <div class="beam" aria-hidden="true"></div>
      <div class="avs" id="avs"></div>
      <strong id="phText">Pronto para transmitir</strong><span id="phSub"></span>
-     <div class="pills h-only"><div class="pg"><button class="btn go big" id="goBig">Iniciar transmissão</button></div>
-      <div class="pg"><button class="ibtn" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button><button class="ibtn" data-act="invite" title="Copiar o link do convite"><svg class="i"><use href="#userplus"/></svg></button></div></div>
+     <div class="pills h-only"><button class="btn go big" id="goBig"><svg class="i"><use href="#i-play"/></svg><span>Iniciar transmissão</span></button>
+      <button class="btn ghost big" data-act="invite"><svg class="i"><use href="#i-link"/></svg><span>Copiar convite</span></button></div>
     </div>
     <div class="chip" id="res"></div>
     <pre class="stats" id="stats" hidden></pre>
-    <button class="sound" id="sound" hidden>Ativar som</button>
+    <button class="sound" id="sound" hidden><svg class="i"><use href="#i-vol"/></svg>Ativar som</button>
     <div class="dock" id="dock">
      <div class="pg">
-      <button class="ibtn h-only" data-act="pause" title="Pausar a imagem (P)"><svg class="i"><use href="#pause"/></svg></button>
-      <button class="ibtn v-only" data-act="mute" id="muteB" title="Mudo (M)"><svg class="i"><use href="#vol"/></svg></button>
-      <input class="v-only" type="range" id="vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+      <button class="ibtn h-only" data-act="pause" data-tip="Pausar imagem" data-kbd="P" aria-label="Pausar imagem"><svg class="i"><use href="#i-pause"/></svg></button>
+      <button class="ibtn v-only" data-act="mute" id="muteB" data-tip="Som" data-kbd="M" aria-label="Ativar ou desativar som"><svg class="i"><use href="#i-vol"/></svg></button>
+      <input class="v-only rng" type="range" id="vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
      </div>
+     <span class="sp"></span>
      <div class="pg">
-      <button class="ibtn" data-act="stats" title="Estatísticas (S)"><svg class="i"><use href="#stats"/></svg></button>
-      <button class="ibtn" data-act="pip" title="Imagem sobre imagem"><svg class="i"><use href="#pip"/></svg></button>
-      <button class="ibtn" data-act="theater" title="Modo cinema (T)"><svg class="i"><use href="#theater"/></svg></button>
-      <button class="ibtn" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button>
-      <button class="ibtn" data-act="fs" title="Tela cheia (F)"><svg class="i"><use href="#max"/></svg></button>
+      <button class="ibtn" data-act="stats" data-tip="Estatísticas" data-kbd="S" aria-label="Estatísticas"><svg class="i"><use href="#i-stats"/></svg></button>
+      <button class="ibtn" data-act="pip" data-tip="Imagem sobre imagem" aria-label="Imagem sobre imagem"><svg class="i"><use href="#i-pip"/></svg></button>
+      <button class="ibtn" data-act="theater" data-tip="Modo cinema" data-kbd="T" aria-label="Modo cinema"><svg class="i"><use href="#i-theater"/></svg></button>
+      <button class="ibtn" data-act="fs" data-tip="Tela cheia" data-kbd="F" aria-label="Tela cheia"><svg class="i"><use href="#i-max"/></svg></button>
      </div>
     </div>
    </section>
-   <section class="ctl h-only">
-    <button class="btn go" id="go">Iniciar transmissão</button>
-    <input type="text" id="link" readonly value="Gerando link…" aria-label="Link para assistir">
-    <button class="btn" id="copy"><svg class="i"><use href="#copy"/></svg>Copiar link</button>
-    <div class="hint" id="hint">Mantenha esta aba aberta durante a transmissão. Ajuste a qualidade em Configurações.</div>
+   <section class="ctl h-only" aria-label="Controles do anfitrião">
+    <button class="btn go" id="go"><svg class="i"><use href="#i-play"/></svg><span>Iniciar transmissão</span></button>
+    <div class="linkbox"><svg class="i"><use href="#i-link"/></svg><input type="text" id="link" readonly value="Gerando link…" aria-label="Link para assistir"></div>
+    <button class="btn" id="copy"><span class="swap"><svg class="i a"><use href="#i-copy"/></svg><svg class="i b"><use href="#i-check"/></svg></span><span id="copyT">Copiar link</span></button>
+    <p class="hint" id="hint">Mantenha esta aba aberta durante a transmissão.</p>
    </section>
   </div>
-  <aside class="chat">
-   <div class="msgs" id="msgs"></div>
-   <form class="in" id="f"><input id="mi" placeholder="Conversar em #chat" maxlength="500" autocomplete="off" aria-label="Mensagem"></form>
+  <aside class="chat" aria-label="Chat">
+   <div class="chathead">Chat <small id="chatCount"></small></div>
+   <div class="msgs" id="msgs" aria-live="polite"><div class="empty" id="chatEmpty"><svg class="i"><use href="#i-chat"/></svg><b>Nenhuma mensagem ainda</b><span>Diga oi para quem está na sala.</span></div></div>
+   <form class="in" id="f"><input id="mi" placeholder="Escreva uma mensagem" maxlength="500" autocomplete="off" aria-label="Mensagem"><button class="send" id="sendB" aria-label="Enviar" disabled><svg class="i"><use href="#i-send"/></svg></button></form>
   </aside>
  </div>
 </main>
 
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" aria-label="Configurações">
- <div class="dh">Configurações<span class="sp"></span><button class="ibtn" id="dclose" aria-label="Fechar"><svg class="i"><use href="#x"/></svg></button></div>
- <div class="tabs"><button class="tab on h-only" data-p="p-tx">Transmissão</button><button class="tab" data-p="p-ap">Aparência</button></div>
+<aside class="drawer" id="drawer" aria-label="Configurações" role="dialog" aria-modal="true">
+ <div class="dh"><h2>Configurações</h2><span class="sp"></span><button class="ibtn" id="dclose" aria-label="Fechar"><svg class="i"><use href="#i-x"/></svg></button></div>
+ <div class="tabs" role="tablist"><span class="tabind"></span><button class="tab on h-only" data-p="p-tx" role="tab">Transmissão</button><button class="tab" data-p="p-ap" role="tab">Aparência</button></div>
  <div class="pane h-only" id="p-tx">
-  <div class="f"><span>Predefinições</span><div class="chips">
+  <div class="f"><span class="fl">Predefinições</span><div class="chips">
    <button class="chp" data-pre="bal">Equilibrada</button><button class="chp" data-pre="alta">Alta</button><button class="chp" data-pre="max">Máxima</button><button class="chp" data-pre="txt">Texto nítido</button></div></div>
-  <label class="f"><span>Resolução</span><select data-k="res" data-n><option value="720">720p</option><option value="1080">1080p (Full HD)</option><option value="1440">1440p (2K)</option><option value="2160">2160p (4K)</option></select></label>
-  <label class="f"><span>Taxa de quadros</span><select data-k="fps" data-n><option value="30">30 fps</option><option value="60">60 fps</option></select></label>
-  <label class="f"><span>Taxa de bits do vídeo: <b id="brv"></b></span><input type="range" data-k="br" data-n min="2" max="40" step="1"></label>
-  <label class="f"><span>Prioridade</span><select data-k="prio"><option value="motion">Fluidez (jogos e vídeos)</option><option value="detail">Nitidez (texto e programas)</option></select></label>
-  <label class="f"><span>Codec de vídeo (vale para novos espectadores)</span><select data-k="codec"><option value="auto">Automático</option><option value="VP9">VP9: melhor qualidade</option><option value="AV1">AV1: mais eficiente, mais pesado</option><option value="H264">H.264: usa a placa de vídeo</option></select></label>
-  <label class="f"><span>Qualidade do áudio (vale para novos espectadores)</span><select data-k="abr" data-n><option value="128">128 kbps</option><option value="192">192 kbps</option><option value="320">320 kbps</option><option value="510">510 kbps (máxima)</option></select></label>
-  <label class="f"><span>Máximo de espectadores</span><select data-k="max" data-n><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
+  <div class="f"><span class="fl" id="l-res">Resolução</span><select data-k="res" data-n aria-labelledby="l-res"><option value="720">720p</option><option value="1080" data-d="Full HD">1080p</option><option value="1440" data-d="2K">1440p</option><option value="2160" data-d="4K, exige upload alto">2160p</option></select></div>
+  <div class="f"><span class="fl" id="l-fps">Taxa de quadros</span><select data-k="fps" data-n aria-labelledby="l-fps"><option value="30">30 fps</option><option value="60" data-d="Mais fluido">60 fps</option></select></div>
+  <div class="f"><span class="fl" id="l-br">Taxa de bits do vídeo <b id="brv"></b></span><input class="rng" type="range" data-k="br" data-n min="2" max="40" step="1" aria-labelledby="l-br"></div>
+  <div class="f"><span class="fl" id="l-prio">Prioridade</span><select data-k="prio" aria-labelledby="l-prio"><option value="motion" data-d="Jogos e vídeos">Fluidez</option><option value="detail" data-d="Texto e programas">Nitidez</option></select></div>
+  <div class="f"><span class="fl" id="l-codec">Codec de vídeo</span><select data-k="codec" aria-labelledby="l-codec"><option value="auto" data-d="O navegador escolhe">Automático</option><option value="VP9" data-d="Melhor qualidade">VP9</option><option value="AV1" data-d="Mais eficiente, mais pesado">AV1</option><option value="H264" data-d="Usa a placa de vídeo">H.264</option></select><small class="fh">Vale para quem entrar depois da mudança.</small></div>
+  <div class="f"><span class="fl" id="l-abr">Qualidade do áudio</span><select data-k="abr" data-n aria-labelledby="l-abr"><option value="128">128 kbps</option><option value="192">192 kbps</option><option value="320">320 kbps</option><option value="510" data-d="Máxima">510 kbps</option></select><small class="fh">Vale para quem entrar depois da mudança.</small></div>
+  <div class="f"><span class="fl" id="l-max">Máximo de espectadores</span><select data-k="max" data-n aria-labelledby="l-max"><option value="1">1 pessoa</option><option value="2">2 pessoas</option><option value="3">3 pessoas</option><option value="4">4 pessoas</option></select></div>
   <p class="note" id="need"></p>
  </div>
  <div class="pane" id="p-ap" hidden>
-  <div class="f"><span>Seu perfil</span><div class="pickrow"><button type="button" class="pick mepic" id="avPrev2" aria-label="Trocar foto de perfil"></button>
-   <div><small>Imagem ou GIF. GIFs de até 600 KB mantêm a animação. Fica salvo só neste navegador.</small><br><button type="button" class="link avrm">Remover foto</button></div></div></div>
-  <label class="f"><span>Tema</span><select data-k="theme"><option value="dark">Escuro</option><option value="classic">Clássico</option><option value="oled">Meia-noite</option><option value="light">Claro</option></select></label>
-  <div class="f"><span>Cor de destaque</span><div class="sw">
-   <button data-c="#5865F2" style="background:#5865F2" aria-label="Azul"></button><button data-c="#23A55A" style="background:#23A55A" aria-label="Verde"></button><button data-c="#EB459E" style="background:#EB459E" aria-label="Rosa"></button><button data-c="#F0853C" style="background:#F0853C" aria-label="Laranja"></button><button data-c="#00A8FC" style="background:#00A8FC" aria-label="Ciano"></button><button data-c="#9B59F5" style="background:#9B59F5" aria-label="Roxo"></button>
-   <input type="color" id="acc" aria-label="Cor personalizada"></div></div>
-  <label class="ck"><input type="checkbox" data-k="calm"> Reduzir animações</label>
-  <p class="note">Atalhos: F tela cheia · M mudo · T modo cinema · C chat · S estatísticas · P pausar (anfitrião)</p>
+  <div class="f"><span class="fl">Seu perfil</span><div class="pickrow"><button type="button" class="pick mepic" id="avPrev2" aria-label="Trocar foto de perfil"></button>
+   <div><small>Imagem ou GIF. GIFs de até 600 KB mantêm a animação. A foto fica salva só neste navegador.</small><button type="button" class="link avrm">Remover foto</button></div></div></div>
+  <div class="f"><span class="fl" id="l-theme">Tema</span><select data-k="theme" aria-labelledby="l-theme"><option value="dark" data-d="Escuro com tom de cinema">Sala escura</option><option value="classic" data-d="Cinza neutro">Grafite</option><option value="oled" data-d="Preto total para telas OLED">Meia-noite</option><option value="light">Claro</option></select></div>
+  <div class="f"><span class="fl">Cor de destaque</span><div class="sw">
+   <button data-c="#F2B544" style="--c:#F2B544" aria-label="Âmbar"></button><button data-c="#E5484D" style="--c:#E5484D" aria-label="Vermelho"></button><button data-c="#5B7CFA" style="--c:#5B7CFA" aria-label="Azul"></button><button data-c="#3DD68C" style="--c:#3DD68C" aria-label="Verde"></button><button data-c="#EC5FA8" style="--c:#EC5FA8" aria-label="Rosa"></button><button data-c="#9D7BF5" style="--c:#9D7BF5" aria-label="Lilás"></button>
+   <label class="custom" aria-label="Cor personalizada"><input type="color" id="acc"><svg class="i"><use href="#i-plus"/></svg></label></div></div>
+  <label class="tg"><span><b>Reduzir animações</b><small>Desliga transições e efeitos de movimento.</small></span><input type="checkbox" data-k="calm"><i aria-hidden="true"></i></label>
+  <div class="f"><span class="fl">Atalhos</span><ul class="keys">
+   <li><kbd>F</kbd>Tela cheia</li><li><kbd>T</kbd>Modo cinema</li><li><kbd>C</kbd>Chat</li><li><kbd>S</kbd>Estatísticas</li><li class="v-only"><kbd>M</kbd>Som</li><li class="h-only"><kbd>P</kbd>Pausar imagem</li></ul></div>
  </div>
 </aside>
-<div class="toast" id="toast" role="status"></div>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<div class="tip" id="tip" role="tooltip"></div>
 <input type="file" id="avFile" accept="image/*" hidden>
+
+<div class="modal" id="confirm" hidden>
+ <div class="card sm" role="alertdialog" aria-modal="true" aria-labelledby="cfT" aria-describedby="cfD">
+  <h2 id="cfT"></h2><p id="cfD"></p>
+  <div class="row"><button class="btn" id="cfNo">Cancelar</button><button class="btn danger" id="cfYes"></button></div>
+ </div>
+</div>
 
 <div class="modal" id="modal">
  <form class="card" id="nf">
-  <h2>Bem-vindo</h2><p>Escolha um apelido para entrar no chat e na transmissão.</p>
+  <div class="mark"><svg class="i"><use href="#i-logo"/></svg></div>
+  <h2 id="welT">Bem-vindo ao Cineminha</h2><p id="welD">Escolha como quer aparecer no chat e na sala.</p>
   <div class="pickrow"><button type="button" class="pick mepic" id="avPrev" aria-label="Escolher foto de perfil"></button>
-   <div><small>Foto de perfil (opcional). Aceita imagem ou GIF e fica salva só neste navegador.</small><br><button type="button" class="link avrm">Remover foto</button></div></div>
-  <input id="ni" maxlength="20" required autofocus placeholder="Seu apelido" autocomplete="off" aria-label="Apelido">
-  <button class="btn go">Entrar</button>
+   <div><small>Foto de perfil opcional. Aceita imagem ou GIF e fica salva só neste navegador.</small><button type="button" class="link avrm">Remover foto</button></div></div>
+  <div class="field"><input id="ni" maxlength="20" required autofocus placeholder=" " autocomplete="off"><label for="ni">Seu apelido</label></div>
+  <button class="btn go big" id="joinB">Entrar na sala</button>
  </form>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
