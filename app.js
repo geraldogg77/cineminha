@@ -37,9 +37,11 @@ const PRE = {
   max: {res: 1080, fps: 60, br: 25, prio: 'motion'}, txt: {res: 1080, fps: 30, br: 10, prio: 'detail'}
 };
 const S = {theme: 'dark', accent: '#5B7CFA', calm: false, res: 1080, fps: 60, br: 12, prio: 'motion', codec: 'auto', abr: 320, max: 2,
-  mxScreen: true, vScreen: 100, mxMic: false, vMic: 100, micDev: '', mxExtra: false, vExtra: 100, extDev: ''};
+  mxScreen: true, vScreen: 100, mxMic: false, vMic: 100, micDev: '', mxExtra: false, vExtra: 100, extDev: '',
+  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false};
 try { Object.assign(S, JSON.parse(localStorage.getItem('tl-set') || '{}')); } catch (e) {}
 if (!['dark', 'classic', 'oled', 'light'].includes(S.theme)) S.theme = 'dark';
+S.max = Math.min(10, Math.max(1, +S.max || 2));
 if (!/^#[0-9a-f]{6}$/i.test(S.accent)) S.accent = '#5B7CFA';
 /* versão 8 tinha âmbar como padrão: quem ficou com ele sem escolher volta ao azul uma única vez */
 try { if (!localStorage.getItem('tl-acc2')) { if (S.accent.toUpperCase() === '#F2B544') S.accent = '#5B7CFA'; localStorage.setItem('tl-acc2', '1'); } } catch (e) {}
@@ -206,9 +208,10 @@ function sync() {
   $('.sw .custom').classList.toggle('on', !hit);
   $$('[data-pre]').forEach(b => { const p = PRE[b.dataset.pre]; b.classList.toggle('on', Object.keys(p).every(k => S[k] === p[k])); });
   $('#brv').textContent = S.br + ' Mbps';
-  $('#need').textContent = 'Cada pessoa que assiste sua tela usa cerca de ' + Math.ceil(S.br + S.abr / 1000) + ' Mbps do seu upload. Com 2 pessoas, ' + Math.ceil((S.br + S.abr / 1000) * 2) + ' Mbps. Teste sua velocidade antes de transmitir.';
+  const per = S.br + S.abr / 1000;
+  $('#need').textContent = 'Cada pessoa que assiste sua tela usa cerca de ' + Math.ceil(per) + ' Mbps do seu upload: ' + Math.ceil(per * 3) + ' Mbps para 3 pessoas e ' + Math.ceil(per * 9) + ' Mbps para 9. Se a imagem travar, diminua a taxa de bits.';
   $$('[data-pct]').forEach(b => b.textContent = S[b.dataset.pct] + '%');
-  [['screen', 'mxScreen'], ['mic', 'mxMic'], ['extra', 'mxExtra']].forEach(([k, on]) => $('.mrow[data-src=' + k + ']').classList.toggle('off', !S[on]));
+  [['screen', 'mxScreen'], ['mic', 'mxMic'], ['extra', 'mxExtra'], ['apps', 'mxApps']].forEach(([k, on]) => $('.mrow[data-src=' + k + ']').classList.toggle('off', !S[on]));
   $$('.micB').forEach(b => { b.classList.toggle('on', S.mxMic); b.querySelector('use').setAttribute('href', S.mxMic ? '#i-mic' : '#i-micoff'); b.dataset.tip = S.mxMic ? 'Desligar microfone' : 'Ligar microfone'; });
 }
 const save = () => { try { localStorage.setItem('tl-set', JSON.stringify(S)); } catch (e) {} };
@@ -338,7 +341,7 @@ const applyMute = () => { vid.muted = want === myId || wantMuted; };
    Som da tela, microfone e entrada extra passam por ganhos separados e viram uma só faixa.
    A faixa existe desde o início da transmissão, então ligar ou desligar fontes não reconecta ninguém. */
 const MX = {ctx: null, dest: null, nodes: {}};
-const GK = {screen: ['mxScreen', 'vScreen'], mic: ['mxMic', 'vMic'], extra: ['mxExtra', 'vExtra']};
+const GK = {screen: ['mxScreen', 'vScreen'], mic: ['mxMic', 'vMic'], extra: ['mxExtra', 'vExtra'], apps: ['mxApps', 'vApps']};
 function mixCtx() {
   if (!MX.ctx) {
     MX.ctx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 48000, latencyHint: 'interactive'});
@@ -411,6 +414,7 @@ function mixChanged(k) {
   if (k === 'mxScreen' || k === 'vScreen') gain('screen');
   else if (k === 'vMic') gain('mic');
   else if (k === 'vExtra') gain('extra');
+  else if (k === 'mxApps' || k === 'vApps') { gain('apps'); helperStream(); }
   else if (k === 'mxMic' || k === 'micDev') openInput('mic');
   else if (k === 'mxExtra' || k === 'extDev') openInput('extra');
 }
@@ -424,6 +428,97 @@ function mixChanged(k) {
   }
   requestAnimationFrame(meters);
 })();
+
+
+/* ---------- Cineminha Áudio: programa do Windows que captura apps escolhidos ----------
+   Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
+   O site só tenta conectar depois que a pessoa baixou ou pediu para conectar, para não incomodar quem não usa. */
+const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null};
+const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.q=[];this.o=0;this.n=0;this.on=false;
+this.port.onmessage=e=>{if(e.data==='reset'){this.q=[];this.o=0;this.n=0;this.on=false;return}this.q.push(e.data);this.n+=e.data.length;
+while(this.n>28800&&this.q.length>1){const d=this.q.shift();this.n-=d.length-this.o;this.o=0}}}
+process(i,out){const L=out[0][0],R=out[0][1]||out[0][0];if(!this.on){if(this.n>=3840)this.on=true;else{L.fill(0);R.fill(0);return true}}
+for(let k=0;k<L.length;k++){if(!this.q.length){L[k]=R[k]=0;this.on=false;continue}const d=this.q[0];L[k]=d[this.o];R[k]=d[this.o+1];this.o+=2;this.n-=2;
+if(this.o>=d.length){this.q.shift();this.o=0}}return true}}registerProcessor('cm-apps',P);`;
+async function helperNode() {
+  if (HP.node) return HP.node;
+  const ctx = mixCtx();
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], {type: 'text/javascript'})));
+  HP.node = new AudioWorkletNode(ctx, 'cm-apps', {numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2]});
+  const g = ctx.createGain(), an = ctx.createAnalyser(); an.fftSize = 512;
+  HP.node.connect(g); g.connect(an); g.connect(MX.dest);
+  MX.nodes.apps = {ms: null, src: HP.node, g, an, buf: new Uint8Array(an.fftSize)}; gain('apps');
+  return HP.node;
+}
+function helperSend(m) { if (HP.ws && HP.ws.readyState === 1) HP.ws.send(JSON.stringify(m)); }
+function helperStream() { helperSend({t: stream && S.mxApps ? 'start' : 'stop'}); if (!(stream && S.mxApps) && HP.node) HP.node.port.postMessage('reset'); }
+function helperConnect(loud) {
+  if (HP.ws && HP.ws.readyState <= 1) return;
+  let ws;
+  try { ws = new WebSocket('ws://127.0.0.1:47833'); } catch (e) { return; }
+  HP.ws = ws; ws.binaryType = 'arraybuffer';
+  ws.onopen = async () => {
+    HP.ok = true; HP.error = null; clearInterval(HP.poll); HP.poll = 0;
+    const first = !S.helperSeen;
+    S.helperSeen = true;
+    if (first) { S.mxApps = true; if (S.mxScreen) { S.mxScreen = false; toast('Cineminha Áudio conectado. Desliguei o som da tela para o áudio não sair duplicado.', 'ok'); } else toast('Cineminha Áudio conectado', 'ok'); }
+    else if (loud) toast('Cineminha Áudio conectado', 'ok');
+    save(); sync();
+    try { await helperNode(); } catch (e) { toast('Este navegador não aceita o som dos apps. Use Chrome, Edge ou Brave atualizado.', 'err'); }
+    helperSend({t: 'prefs', apps: S.appPrefs}); helperStream(); paintApps();
+  };
+  ws.onmessage = e => {
+    if (typeof e.data !== 'string') { if (HP.node) HP.node.port.postMessage(new Float32Array(e.data), [e.data]); return; }
+    let d; try { d = JSON.parse(e.data); } catch (_) { return; }
+    if (d.t === 'apps') { HP.apps = Array.isArray(d.list) ? d.list : []; HP.error = d.error || null; paintApps(); }
+  };
+  ws.onclose = () => {
+    const was = HP.ok; HP.ok = false; HP.ws = null; HP.apps = []; paintApps();
+    if (was) toast('Cineminha Áudio foi fechado. O som dos apps saiu da transmissão.', 'info');
+    else if (loud) toast('Não encontrei o Cineminha Áudio. Confira se ele está aberto, com o ícone azul na bandeja do Windows.', 'err');
+  };
+}
+function helperPoll(ms) { clearInterval(HP.poll); const end = Date.now() + ms; HP.poll = setInterval(() => { if (HP.ok || Date.now() > end) { clearInterval(HP.poll); HP.poll = 0; return; } helperConnect(false); }, 3000); }
+const isWin = /Windows/i.test(navigator.userAgent);
+function paintApps() {
+  const list = $('#appList'), get = $('#appGet'), row = $('.mrow.apps');
+  row.classList.toggle('conn', HP.ok);
+  list.hidden = !HP.ok; get.hidden = HP.ok;
+  if (!HP.ok) {
+    $('#appsSub').textContent = isWin ? 'Escolha programa por programa' : 'Disponível no Windows 10 e 11';
+    $('#appGetT').innerHTML = !isWin ? 'O Cineminha Áudio funciona no <b>Windows 10 e 11</b>. Neste computador, use o som da tela ou a entrada extra.'
+      : S.helperSeen ? 'O <b>Cineminha Áudio</b> está desligado. Abra o programa no seu computador para escolher os apps.'
+      : 'Para escolher os apps, como Spotify, Discord e jogos, instale o <b>Cineminha Áudio</b>: um programa de 650 KB para Windows 10 e 11 que fica na bandeja, perto do relógio.';
+    $('#appDl').hidden = !isWin; $('#appConn').hidden = !isWin;
+    $('#appDl span').textContent = S.helperSeen ? 'Baixar de novo' : 'Baixar Cineminha Áudio';
+    return;
+  }
+  const known = new Set([...list.querySelectorAll('.app')].map(a => a.dataset.key));
+  list.textContent = '';
+  const head = document.createElement('p'); head.className = 'appnote';
+  head.textContent = HP.apps.length ? 'Desmarque um app para o som dele ficar de fora. Você continua ouvindo normalmente.' : 'Nenhum app tocando som agora. Abra um programa com áudio e ele aparece aqui.';
+  list.append(head);
+  if (HP.error) { const er = document.createElement('p'); er.className = 'apperr'; er.textContent = HP.error; list.append(er); }
+  HP.apps.forEach(a => {
+    const l = document.createElement('label'); l.className = 'app' + (a.active ? ' on' : ''); l.dataset.key = a.key;
+    if (known.has(a.key)) l.style.animation = 'none';
+    l.innerHTML = '<input type="checkbox"><span class="box"><svg class="i"><use href="#i-check"/></svg></span>' + (a.icon ? '<img alt="">' : '<span class="ph2"></span>') + '<span class="nm"></span><span class="play" aria-hidden="true"><i></i><i></i><i></i></span>';
+    const cb = l.querySelector('input'), p = S.appPrefs[a.key];
+    cb.checked = p ? p.on : a.on;
+    if (a.icon) l.querySelector('img').src = a.icon; else l.querySelector('.ph2').textContent = (a.name[0] || '?').toUpperCase();
+    l.querySelector('.nm').textContent = a.name; l.title = a.name + (a.active ? ' (tocando agora)' : '');
+    cb.onchange = () => { S.appPrefs[a.key] = {on: cb.checked, vol: (p && p.vol) || 100}; save(); helperSend({t: 'set', key: a.key, on: cb.checked}); paintApps(); };
+    list.append(l);
+  });
+  if (HP.apps.some(a => /chrome|msedge|brave|opera|firefox|vivaldi/i.test(a.key))) {
+    const n = document.createElement('p'); n.className = 'appnote';
+    n.textContent = 'Marcar o navegador inclui o som de todas as abas dele, inclusive desta sala.'; list.append(n);
+  }
+  const on = HP.apps.filter(a => (S.appPrefs[a.key] ? S.appPrefs[a.key].on : a.on)).length;
+  $('#appsSub').textContent = 'Cineminha Áudio conectado · ' + on + ' de ' + HP.apps.length + ' apps';
+}
+$('#appDl').addEventListener('click', () => { $('#appGetH').hidden = false; helperPoll(180000); });
+$('#appConn').onclick = () => { $('#appGetH').hidden = false; helperConnect(true); helperPoll(60000); };
 
 /* ---------- Chat ---------- */
 let lastAuthor = null;
@@ -735,8 +830,10 @@ async function start() {
   preview = new MediaStream([vt]);
   stream = new MediaStream([vt, MX.dest.stream.getAudioTracks()[0]]);
   await Promise.all([openInput('mic'), openInput('extra')]);
-  $('#hint').classList.toggle('warn', !hasAudio && !S.mxMic && !S.mxExtra);
-  $('#hint').textContent = hasAudio ? 'Som da tela incluído. Ajuste as fontes no mixer de áudio.' : 'Sem som da tela: ao compartilhar, marque “Compartilhar áudio do sistema” (tela inteira) ou “Compartilhar áudio da guia”.';
+  if (HP.ok) { try { await helperNode(); } catch (e) {} }
+  helperStream();
+  $('#hint').classList.toggle('warn', !hasAudio && !S.mxMic && !S.mxExtra && !(HP.ok && S.mxApps));
+  $('#hint').textContent = HP.ok && S.mxApps ? 'Som dos apps escolhidos incluído. Ajuste no mixer de áudio.' : hasAudio ? 'Som da tela incluído. Ajuste as fontes no mixer de áudio.' : 'Sem som da tela: ao compartilhar, marque “Compartilhar áudio do sistema” (tela inteira) ou “Compartilhar áudio da guia”.';
   setGo(true); toast('Você está transmitindo', 'ok');
   if (!want || !liveIds().includes(want)) { closeIn(); want = myId; }
   toRoom({t: 'live', on: true});
@@ -746,7 +843,7 @@ function stop() {
   if (!stream) return;
   disp.getTracks().forEach(t => { t.onended = null; t.stop(); });
   ['screen', 'mic', 'extra'].forEach(k => detach(k, k !== 'screen'));
-  stream = null; disp = null; preview = null; paused = false;
+  stream = null; helperStream(); disp = null; preview = null; paused = false;
   $$('[data-act=pause] use').forEach(u => u.setAttribute('href', '#i-pause'));
   $$('[data-act=pause]').forEach(b => { b.dataset.tip = 'Pausar imagem'; b.classList.remove('on'); });
   [...outCalls.keys()].forEach(closeOut);
@@ -824,7 +921,8 @@ setInterval(async () => {
 /* ---------- Início ---------- */
 $$('select[data-k]').forEach(makeSelect);
 try { $('#ni').value = localStorage.getItem('tl-name') || ''; } catch (e) {}
-sync(); showPane('p-tx'); paintMe(); syncVol(); setGo(false); refreshDevices();
+sync(); showPane('p-tx'); paintMe(); syncVol(); setGo(false); refreshDevices(); paintApps();
+if (S.helperSeen && isWin) { helperConnect(false); setInterval(() => { if (!HP.ok) helperConnect(false); }, 8000); }
 if (target) { $('#welT').textContent = 'Entrar na sala'; $('#welD').textContent = 'Escolha como você vai aparecer para os outros e no chat.'; $('#joinB').textContent = 'Entrar na sala'; }
 else $('#joinB').textContent = 'Criar minha sala';
 $$('.pick').forEach(b => b.onclick = () => $('#avFile').click());

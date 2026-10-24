@@ -20,7 +20,17 @@ No mixer (botão de controles deslizantes ou **Configurações → Transmissão*
 - **Microfone**: sua voz para quem assiste sua tela. Também liga e desliga pelo botão de microfone ou pela tecla V.
 - **Entrada extra**: qualquer dispositivo de entrada de áudio, como um cabo virtual.
 
-O navegador não consegue separar o som de cada programa. Para transmitir só alguns apps, instale o VB-CABLE (gratuito), mande a saída desses apps para **CABLE Input** no Mixer de volume do Windows e escolha **CABLE Output** na entrada extra. O passo a passo completo está dentro do mixer.
+### Cineminha Áudio (escolher apps no Windows)
+
+O navegador sozinho não separa o som de cada programa. Para escolher app por app, como na lista de compartilhamento do Discord, existe o **Cineminha Áudio**: um programa de 650 KB para Windows 10 e 11, sem instalação, que fica na bandeja perto do relógio.
+
+1. No mixer, clique em **Baixar Cineminha Áudio** e abra o arquivo. Como o programa não tem assinatura digital paga, o Windows pode avisar que protegeu o computador: clique em **Mais informações** › **Executar assim mesmo**.
+2. O site conecta sozinho e mostra os apps que estão tocando som. Desmarque os que devem ficar de fora.
+3. Se o navegador pedir acesso a dispositivos da rede local, clique em **Permitir**: é assim que a página conversa com o programa no seu computador.
+
+O programa só captura enquanto você transmite, só aceita conexões do próprio computador vindas do site do Cineminha e não envia nada para a internet: quem manda o som para a sala é o navegador. O código está em `helper/` e o arquivo pronto em `download/`. Para gerar de novo: `cd helper && cargo zigbuild --release --target x86_64-pc-windows-gnu`.
+
+Sem o Cineminha Áudio também dá: instale o VB-CABLE (gratuito), mande a saída desses apps para **CABLE Input** no Mixer de volume do Windows e escolha **CABLE Output** na entrada extra. O passo a passo completo está dentro do mixer.
 
 ## Atalhos
 
@@ -56,5 +66,6 @@ Pelo terminal, o passo 2 e 3 equivalem a `cd worker && npx wrangler deploy && np
 - `styles.css`: sistema visual (temas, componentes, animações).
 - `app.js`: transmissão, chat, configurações e componentes de interface.
 - `worker/`: Worker da Cloudflare que gera as credenciais TURN.
+- `helper/`: código do Cineminha Áudio (Rust); `download/`: o programa pronto.
 
 Ao publicar uma versão nova, aumente o número em `styles.css?v=` e `app.js?v=` no `index.html` para os navegadores não usarem arquivos antigos do cache.

@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=11">
+<link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body class="booting">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -38,6 +38,8 @@
 <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
 <symbol id="i-micoff" viewBox="0 0 24 24"><path d="M15 9.5V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.6 2.5M5 11a7 7 0 0 0 11.3 5.5M19 11a7 7 0 0 1-.6 2.8M12 18v3M3 3l18 18"/></symbol>
 <symbol id="i-mix" viewBox="0 0 24 24"><path d="M6 4v16M12 4v16M18 4v16"/><rect x="4" y="13" width="4" height="3" rx="1"/><rect x="10" y="7" width="4" height="3" rx="1"/><rect x="16" y="11" width="4" height="3" rx="1"/></symbol>
+<symbol id="i-apps" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
 <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
 <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
 <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></symbol>
@@ -142,6 +144,18 @@
  <div class="pane" id="p-tx">
   <section class="f" id="mixSec"><span class="fl">Áudio da sua transmissão</span>
    <div class="mix">
+    <div class="mrow apps" data-src="apps">
+     <div class="mtop"><span class="mic"><svg class="i"><use href="#i-apps"/></svg></span><span class="mt"><b>Som dos apps</b><small id="appsSub">Escolha programa por programa</small></span><label class="switch"><input type="checkbox" data-k="mxApps" aria-label="Som dos apps"><i aria-hidden="true"></i></label></div>
+     <div class="appbox" id="appBox">
+      <div class="applist" id="appList" hidden></div>
+      <div class="appget" id="appGet">
+       <p id="appGetT">Para escolher os apps, como Spotify, Discord e jogos, instale o <b>Cineminha Áudio</b>: um programa de 650 KB para Windows 10 e 11 que fica na bandeja, perto do relógio.</p>
+       <div class="row"><a class="btn go" id="appDl" href="download/CineminhaAudio.exe" download><svg class="i"><use href="#i-download"/></svg><span>Baixar Cineminha Áudio</span></a><button type="button" class="btn" id="appConn">Já está aberto, conectar</button></div>
+       <small class="fh" id="appGetH" hidden>Abra o arquivo baixado. Se o Windows avisar que protegeu o computador, clique em <b>Mais informações</b> › <b>Executar assim mesmo</b>. Se o navegador pedir acesso a dispositivos locais, clique em <b>Permitir</b>.</small>
+      </div>
+     </div>
+     <div class="mbot"><input class="rng" type="range" data-k="vApps" data-n min="0" max="150" step="1" aria-label="Volume dos apps"><span class="meter" data-m="apps"><i></i></span><b class="pct" data-pct="vApps"></b></div>
+    </div>
     <div class="mrow" data-src="screen">
      <div class="mtop"><span class="mic"><svg class="i"><use href="#i-monitor"/></svg></span><span class="mt"><b>Som da tela</b><small>Áudio capturado junto com a tela ou aba</small></span><label class="switch"><input type="checkbox" data-k="mxScreen" aria-label="Som da tela"><i aria-hidden="true"></i></label></div>
      <div class="mbot"><input class="rng" type="range" data-k="vScreen" data-n min="0" max="150" step="1" aria-label="Volume do som da tela"><span class="meter" data-m="screen"><i></i></span><b class="pct" data-pct="vScreen"></b></div>
@@ -158,8 +172,8 @@
     </div>
    </div>
    <button type="button" class="link" id="devPerm" hidden>Permitir acesso para ver os nomes dos dispositivos</button>
-   <details class="help"><summary>Como transmitir o som só de alguns apps</summary>
-    <p>O navegador não consegue separar o som de cada programa. Para escolher os apps, use um cabo de áudio virtual:</p>
+   <details class="help"><summary>Sem o Cineminha Áudio: usar um cabo virtual</summary>
+    <p>Se não puder instalar o Cineminha Áudio, dá para separar os apps com um cabo de áudio virtual:</p>
     <ol><li>Instale o VB-CABLE, que é gratuito (vb-audio.com/Cable), e reinicie o computador.</li>
      <li>No Windows, abra Configurações › Sistema › Som › Mixer de volume e, em cada app que deve ir para a transmissão, troque a saída para <b>CABLE Input</b>.</li>
      <li>Aqui, ligue a <b>Entrada extra</b>, escolha <b>CABLE Output</b> e desligue o <b>Som da tela</b> para o som não sair duplicado.</li>
@@ -174,7 +188,7 @@
   <div class="f"><span class="fl" id="l-prio">Prioridade</span><select data-k="prio" aria-labelledby="l-prio"><option value="motion" data-d="Jogos e vídeos">Fluidez</option><option value="detail" data-d="Texto e programas">Nitidez</option></select></div>
   <div class="f"><span class="fl" id="l-codec">Codec de vídeo</span><select data-k="codec" aria-labelledby="l-codec"><option value="auto" data-d="O navegador escolhe">Automático</option><option value="VP9" data-d="Melhor qualidade">VP9</option><option value="AV1" data-d="Mais eficiente, mais pesado">AV1</option><option value="H264" data-d="Usa a placa de vídeo">H.264</option></select><small class="fh">Vale para quem entrar depois da mudança.</small></div>
   <div class="f"><span class="fl" id="l-abr">Qualidade do áudio</span><select data-k="abr" data-n aria-labelledby="l-abr"><option value="128">128 kbps</option><option value="192">192 kbps</option><option value="320">320 kbps</option><option value="510" data-d="Máxima">510 kbps</option></select><small class="fh">Vale para quem entrar depois da mudança.</small></div>
-  <div class="f h-only"><span class="fl" id="l-max">Máximo de convidados na sala</span><select data-k="max" data-n aria-labelledby="l-max"><option value="1">1 pessoa</option><option value="2">2 pessoas</option><option value="3">3 pessoas</option><option value="4">4 pessoas</option></select></div>
+  <div class="f h-only"><span class="fl" id="l-max">Máximo de convidados na sala</span><select data-k="max" data-n aria-labelledby="l-max"><option value="1">1 pessoa</option><option value="2">2 pessoas</option><option value="3">3 pessoas</option><option value="4">4 pessoas</option><option value="5">5 pessoas</option><option value="6">6 pessoas</option><option value="7">7 pessoas</option><option value="8">8 pessoas</option><option value="9">9 pessoas</option><option value="10">10 pessoas</option></select><small class="fh">Cada pessoa que assiste uma tela usa upload de quem transmite. Com muitas pessoas, use a predefinição Equilibrada.</small></div>
   <p class="note" id="need"></p>
  </div>
  <div class="pane" id="p-ap" hidden>
@@ -213,6 +227,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>

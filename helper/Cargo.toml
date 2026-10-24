@@ -1,0 +1,33 @@
+[package]
+name = "cineminha-audio"
+version = "1.0.0"
+edition = "2021"
+description = "Captura o som de apps escolhidos e envia para o Cineminha"
+
+[[bin]]
+name = "CineminhaAudio"
+path = "src/main.rs"
+
+[dependencies]
+wasapi = "0.19"
+tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+png = "0.17"
+base64 = "0.22"
+
+[dependencies.windows]
+version = "0.61"
+features = [
+  "Win32_Foundation", "Win32_Media_Audio", "Win32_System_Com", "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp",
+  "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader",
+  "Win32_Storage_FileSystem", "Win32_UI_Shell_PropertiesSystem", "Win32_Devices_FunctionDiscovery",
+]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

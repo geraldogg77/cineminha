@@ -463,6 +463,38 @@ body.selfview .theirs{display:none!important}
 .help b{color:var(--head);font-weight:600}
 .help[open] > :not(summary){animation:rise var(--t2) var(--ease)}
 
+
+/* ---------- Som dos apps (Cineminha Áudio) ---------- */
+.appbox{display:grid;gap:8px}
+.applist{display:grid;max-height:260px;overflow:auto;margin:0 -4px;padding:2px 4px}
+.app{display:flex;align-items:center;gap:12px;min-height:44px;padding:6px 8px;border-radius:10px;cursor:pointer;animation:rise var(--t2) var(--ease) both;transition:background-color var(--t1)}
+.app:hover{background:var(--hover)}
+.app input{position:absolute;opacity:0;width:1px;height:1px}
+.app .box{width:20px;height:20px;border-radius:6px;flex:none;display:grid;place-items:center;background:var(--bg2);box-shadow:0 0 0 1.5px var(--line2) inset;transition:background-color var(--t2),box-shadow var(--t2)}
+.app .box .i{width:14px;height:14px;stroke-width:3;color:var(--on-accent);opacity:0;transform:scale(.4);transition:opacity var(--t2),transform var(--t2) var(--spring)}
+.app input:checked + .box{background:var(--accent);box-shadow:none}
+.app input:checked + .box .i{opacity:1;transform:none}
+.app input:focus-visible + .box{outline:2px solid var(--accent);outline-offset:2px}
+.app img,.app .ph2{width:24px;height:24px;border-radius:6px;flex:none;object-fit:contain}
+.app .ph2{display:grid;place-items:center;background:var(--bg4);color:var(--head);font-size:12px;font-weight:600}
+.app .nm{flex:1;min-width:0;color:var(--head);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity var(--t2)}
+.app input:not(:checked) ~ .nm{opacity:.55}
+.app .play{display:flex;align-items:flex-end;gap:2px;height:12px;width:14px;opacity:0;transition:opacity var(--t2)}
+.app .play i{flex:1;height:30%;border-radius:2px;background:var(--ok);animation:eq .9s var(--ease-io) infinite alternate}
+.app .play i:nth-child(2){animation-delay:-.35s}.app .play i:nth-child(3){animation-delay:-.6s}
+.app.on .play{opacity:1}
+.app .tag2{font-size:11.5px;color:var(--faint)}
+.appnote{font-size:12px;color:var(--muted);text-wrap:pretty;margin:2px 4px 0}
+.appget{display:grid;gap:10px}
+.appget p{margin:0;font-size:13px;color:var(--muted);text-wrap:pretty}
+.appget b{color:var(--head)}
+.appget .row{display:flex;flex-wrap:wrap;gap:8px}
+.appget .btn{height:36px;text-decoration:none}
+.appget .fh{line-height:1.5}
+.apperr{font-size:12.5px;color:var(--warn)}
+.mrow.apps:not(.conn) .mbot{display:none}
+.mrow.apps.conn .mtop .mic{color:var(--ok);background:color-mix(in srgb,var(--ok) 16%,transparent)}
+
 /* ---------- Modo cinema ---------- */
 body.theater{grid-template-columns:minmax(0,1fr)}
 body.theater .rail,body.theater .side{display:none}
