@@ -19,7 +19,7 @@ const clean = s => String(s || '').trim().slice(0, 20);
 const hue = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const avatar = (el, n) => { el.textContent = (n[0] || '?').toUpperCase(); el.style.background = 'hsl(' + hue(n) + ',50%,42%)'; };
 let tt; function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 2600); }
-const icon = (sel, id) => $(sel + ' use').setAttribute('href', '#' + id);
+const icon = (sel, id) => $$(sel + ' use').forEach(u => u.setAttribute('href', '#' + id));
 
 /* ---------- Configurações ---------- */
 function sync() {
@@ -57,11 +57,12 @@ function drawer(o) { $('#drawer').classList.toggle('open', o); $('#scrim').class
 $('#scrim').onclick = $('#dclose').onclick = () => drawer(false);
 
 /* ---------- Ações do player ---------- */
-function syncVol() { icon('#muteB', vid.muted || vid.volume === 0 ? 'mute' : 'vol'); }
+function syncVol() { const m = vid.muted || vid.volume === 0; icon('#muteB', m ? 'mute' : 'vol'); $('#headB').classList.toggle('off', m); }
 const act = {
   fs: () => document.fullscreenElement ? document.exitFullscreen() : stage.requestFullscreen(),
   theater: () => document.body.classList.toggle('theater'),
   chat: () => document.body.classList.toggle('nochat'),
+  invite: () => $('#copy').click(),
   stats: () => { $('#stats').hidden = !$('#stats').hidden; },
   settings: () => { showPane(target ? 'p-ap' : $('.tab.on') ? $('.tab.on').dataset.p : 'p-tx'); drawer(true); },
   pip: () => document.pictureInPictureElement ? document.exitPictureInPicture() : (vid.requestPictureInPicture ? vid.requestPictureInPicture().catch(() => toast('Imagem sobre imagem indisponível agora.')) : toast('Seu navegador não suporta imagem sobre imagem.')),
@@ -102,14 +103,20 @@ function addMsg(m) {
   while (box.children.length > 200) box.firstChild.remove();
   box.scrollTop = box.scrollHeight;
 }
+let lastList = [];
 function renderMembers(list) {
-  const el = $('#members'); el.textContent = '';
+  lastList = list;
+  const el = $('#members'), av = $('#avs'), on = badge.classList.contains('on'); el.textContent = ''; av.textContent = '';
   list.forEach(u => {
     const r = document.createElement('div'); r.className = 'mem';
-    r.innerHTML = '<div class="av on"></div><b></b>' + (u.host ? '<i class="tag">Anfitrião</i>' : '');
-    avatar(r.querySelector('.av'), u.name); r.querySelector('b').textContent = u.name; el.append(r);
+    r.innerHTML = '<div class="av on"></div><div class="mi"><b></b><small></small></div>';
+    avatar(r.querySelector('.av'), u.name); r.querySelector('b').textContent = u.name;
+    r.querySelector('small').textContent = u.host ? (on ? 'Transmitindo agora' : 'Anfitrião') : 'Assistindo';
+    el.append(r);
+    const a = document.createElement('div'); a.className = 'av on' + (u.host && on ? ' talk' : ''); avatar(a, u.name); a.title = u.name; av.append(a);
+    if (u.host) { $('#roomIcon').textContent = (u.name[0] || '?').toUpperCase(); $('#roomName').textContent = $('#roomT').textContent = document.title = 'Sala de ' + u.name; }
   });
-  $('#memTitle').textContent = 'Online — ' + list.length;
+  $('#memTitle').textContent = 'Membros — ' + list.length;
 }
 const bcast = m => viewers.forEach(v => v.conn.open && v.conn.send(m));
 function post(m) { m.t = 'msg'; addMsg(m); bcast(m); }
@@ -131,7 +138,8 @@ $('#f').onsubmit = e => {
 function setStatus(text, on, sub) {
   $('#ph').hidden = !!on; $('#phText').textContent = text || ''; $('#phSub').textContent = sub || '';
   badge.textContent = on ? 'AO VIVO' : 'OFFLINE'; badge.classList.toggle('on', !!on);
-  $('#chLive').classList.toggle('live', !!on); stage.classList.toggle('live', !!on);
+  $('#vc').hidden = !on; $('#rw').classList.toggle('live', !!on); stage.classList.toggle('live', !!on);
+  if (lastList.length) renderMembers(lastList);
 }
 
 /* ---------- Anfitrião ---------- */
@@ -232,12 +240,14 @@ function tune(c) {
   });
 }
 const toggle = () => stream ? stop() : start();
-$('#go').onclick = $('#goBig').onclick = toggle;
+$('#go').onclick = $('#goBig').onclick = $('#vcStop').onclick = toggle;
 $('#copy').onclick = async () => {
   const el = $('#link');
   try { await navigator.clipboard.writeText(el.value); } catch (e) { el.select(); document.execCommand('copy'); }
   toast('Link copiado');
 };
+
+$('#newRoom').onclick = () => { if (confirm('Criar uma nova sala? O link atual deixa de funcionar.')) { try { localStorage.removeItem('tl-id'); } catch (e) {} location.reload(); } };
 
 /* ---------- Espectador ---------- */
 function initViewer() {
@@ -297,7 +307,7 @@ setInterval(async () => {
   });
   if (!st) return;
   if (rel && !last.w) { last.w = 1; toast('Esta conexão passa por um servidor retransmissor e fica limitada. Veja as estatísticas (S).'); }
-  $('#res').textContent = st.w + '×' + st.h + ' · ' + st.fps + ' fps · ' + st.mbps.toFixed(1) + ' Mbps';
+  $('#res').textContent = $('#vcS').textContent = st.w + '×' + st.h + ' · ' + st.fps + ' fps · ' + st.mbps.toFixed(1) + ' Mbps';
   const L = {none: 'nenhuma', bandwidth: 'upload insuficiente', cpu: 'CPU no limite', other: 'outra'};
   $('#stats').textContent = 'Resolução  ' + st.w + '×' + st.h + '\nQuadros  ' + st.fps + ' fps\nTaxa  ' + st.mbps.toFixed(1) + ' Mbps\nCodec  ' + st.codec +
     '\nLatência  ' + (rtt != null ? rtt + ' ms' : '-') + '\nConexão  ' + (rel ? 'retransmitida (lenta)' : 'direta') + (st.loss != null ? '\nPacotes perdidos  ' + st.loss : '') + (st.lim ? '\nLimitação  ' + (L[st.lim] || st.lim) : '');

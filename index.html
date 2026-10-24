@@ -24,26 +24,48 @@
 <symbol id="play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
 <symbol id="copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
 <symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="userplus" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/></symbol>
+<symbol id="headset" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></symbol>
+<symbol id="stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
 </defs></svg>
 
-<nav class="rail"><div class="pill"></div>
- <button class="srv" title="Tela ao vivo" aria-label="Tela ao vivo"><svg class="i big"><use href="#monitor"/></svg></button>
+<nav class="rail">
+ <button class="srv home" title="Início" aria-label="Início"><svg class="i big"><use href="#monitor"/></svg></button>
+ <div class="sep"></div>
+ <div class="rw" id="rw"><div class="pill"></div><button class="srv room on" id="roomIcon" title="Sala de transmissão">TL</button></div>
+ <button class="srv add h-only" id="newRoom" title="Criar nova sala" aria-label="Criar nova sala"><svg class="i big"><use href="#plus"/></svg></button>
 </nav>
 
 <aside class="side">
- <div class="shead">Tela ao vivo</div>
+ <div class="sbtn" id="roomName">Sala de transmissão</div>
  <div class="chs">
-  <div class="cat">Canais</div>
-  <div class="ch act"><span class="h">#</span>chat</div>
-  <div class="ch" id="chLive"><span class="dot"></span>transmissão</div>
-  <div class="cat" id="memTitle">Online</div>
+  <button class="nav act"><svg class="i"><use href="#monitor"/></svg>Transmissão</button>
+  <button class="nav" data-act="chat"><svg class="i"><use href="#chat"/></svg>Chat</button>
+  <button class="nav h-only" data-act="invite"><svg class="i"><use href="#userplus"/></svg>Convidar</button>
+  <button class="nav" data-act="settings"><svg class="i"><use href="#cfg"/></svg>Configurações</button>
+  <div class="cat" id="memTitle">Membros</div>
   <div id="members"></div>
  </div>
- <div class="user"><div class="av on" id="meAv"></div><div><b id="meName"></b><small id="meRole"></small></div></div>
+ <div class="bottom">
+  <div class="vc" id="vc" hidden>
+   <div class="vt"><svg class="i ok"><use href="#stats"/></svg><div><b>Transmissão ao vivo</b><small id="vcS"></small></div></div>
+   <div class="vb">
+    <button class="ibtn h-only" data-act="pause" title="Pausar a imagem (P)"><svg class="i"><use href="#pause"/></svg></button>
+    <button class="ibtn" data-act="pip" title="Imagem sobre imagem"><svg class="i"><use href="#pip"/></svg></button>
+    <button class="ibtn" data-act="fs" title="Tela cheia (F)"><svg class="i"><use href="#max"/></svg></button>
+    <button class="ibtn h-only stopB" id="vcStop" title="Parar transmissão"><svg class="i"><use href="#stop"/></svg></button>
+   </div>
+  </div>
+  <div class="user"><div class="av on" id="meAv"></div><div class="ui"><b id="meName"></b><small id="meRole"></small></div><span class="sp"></span>
+   <button class="ibtn v-only" id="headB" data-act="mute" title="Mudo (M)"><svg class="i"><use href="#headset"/></svg></button>
+   <button class="ibtn" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button></div>
+ </div>
 </aside>
 
 <main class="main">
- <div class="top"><span class="h">#</span>transmissão<span class="badge" id="badge">OFFLINE</span><span class="sp"></span><small id="count"></small>
+ <div class="top"><svg class="i mut"><use href="#monitor"/></svg><span id="roomT">Transmissão</span><span class="badge" id="badge">OFFLINE</span><span class="sp"></span><small id="count"></small>
+  <button class="ibtn t h-only" data-act="invite" title="Convidar: copiar o link"><svg class="i"><use href="#userplus"/></svg></button>
   <button class="ibtn t" data-act="chat" title="Mostrar ou ocultar o chat (C)"><svg class="i"><use href="#chat"/></svg></button>
   <button class="ibtn t" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button>
  </div>
@@ -52,23 +74,27 @@
    <section class="stage" id="stage">
     <video id="v" autoplay playsinline muted></video>
     <div class="ph" id="ph">
-     <svg class="i huge"><use href="#monitor"/></svg>
+     <div class="avs" id="avs"></div>
      <strong id="phText">Pronto para transmitir</strong><span id="phSub"></span>
-     <button class="btn go big h-only" id="goBig">Iniciar transmissão</button>
+     <div class="pills h-only"><div class="pg"><button class="btn go big" id="goBig">Iniciar transmissão</button></div>
+      <div class="pg"><button class="ibtn" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button><button class="ibtn" data-act="invite" title="Copiar o link do convite"><svg class="i"><use href="#userplus"/></svg></button></div></div>
     </div>
     <div class="chip" id="res"></div>
     <pre class="stats" id="stats" hidden></pre>
     <button class="sound" id="sound" hidden>Ativar som</button>
     <div class="dock" id="dock">
-     <button class="ibtn h-only" data-act="pause" title="Pausar a imagem (P)"><svg class="i"><use href="#pause"/></svg></button>
-     <button class="ibtn v-only" data-act="mute" id="muteB" title="Mudo (M)"><svg class="i"><use href="#vol"/></svg></button>
-     <input class="v-only" type="range" id="vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
-     <span class="sp"></span>
-     <button class="ibtn" data-act="stats" title="Estatísticas (S)"><svg class="i"><use href="#stats"/></svg></button>
-     <button class="ibtn" data-act="pip" title="Imagem sobre imagem"><svg class="i"><use href="#pip"/></svg></button>
-     <button class="ibtn" data-act="theater" title="Modo cinema (T)"><svg class="i"><use href="#theater"/></svg></button>
-     <button class="ibtn" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button>
-     <button class="ibtn" data-act="fs" title="Tela cheia (F)"><svg class="i"><use href="#max"/></svg></button>
+     <div class="pg">
+      <button class="ibtn h-only" data-act="pause" title="Pausar a imagem (P)"><svg class="i"><use href="#pause"/></svg></button>
+      <button class="ibtn v-only" data-act="mute" id="muteB" title="Mudo (M)"><svg class="i"><use href="#vol"/></svg></button>
+      <input class="v-only" type="range" id="vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+     </div>
+     <div class="pg">
+      <button class="ibtn" data-act="stats" title="Estatísticas (S)"><svg class="i"><use href="#stats"/></svg></button>
+      <button class="ibtn" data-act="pip" title="Imagem sobre imagem"><svg class="i"><use href="#pip"/></svg></button>
+      <button class="ibtn" data-act="theater" title="Modo cinema (T)"><svg class="i"><use href="#theater"/></svg></button>
+      <button class="ibtn" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button>
+      <button class="ibtn" data-act="fs" title="Tela cheia (F)"><svg class="i"><use href="#max"/></svg></button>
+     </div>
     </div>
    </section>
    <section class="ctl h-only">
@@ -102,7 +128,7 @@
   <p class="note" id="need"></p>
  </div>
  <div class="pane" id="p-ap" hidden>
-  <label class="f"><span>Tema</span><select data-k="theme"><option value="dark">Escuro</option><option value="oled">Meia-noite</option><option value="light">Claro</option></select></label>
+  <label class="f"><span>Tema</span><select data-k="theme"><option value="dark">Escuro</option><option value="classic">Clássico</option><option value="oled">Meia-noite</option><option value="light">Claro</option></select></label>
   <div class="f"><span>Cor de destaque</span><div class="sw">
    <button data-c="#5865F2" style="background:#5865F2" aria-label="Azul"></button><button data-c="#23A55A" style="background:#23A55A" aria-label="Verde"></button><button data-c="#EB459E" style="background:#EB459E" aria-label="Rosa"></button><button data-c="#F0853C" style="background:#F0853C" aria-label="Laranja"></button><button data-c="#00A8FC" style="background:#00A8FC" aria-label="Ciano"></button><button data-c="#9B59F5" style="background:#9B59F5" aria-label="Roxo"></button>
    <input type="color" id="acc" aria-label="Cor personalizada"></div></div>
