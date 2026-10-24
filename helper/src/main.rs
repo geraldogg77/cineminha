@@ -401,7 +401,7 @@ fn client_loop(shared: Shared, stream: TcpStream) -> Result<(), Box<dyn std::err
     {
         let mut st = shared.lock().unwrap();
         st.clients.push(Client { tx: tx.clone(), streaming: streaming.clone() });
-        let hello = json!({"t": "hello", "v": 1, "rate": RATE, "ch": CH, "name": "Cineminha Áudio"}).to_string();
+        let hello = json!({"t": "hello", "v": 1, "ver": env!("CARGO_PKG_VERSION"), "rate": RATE, "ch": CH, "name": "Cineminha Áudio"}).to_string();
         let _ = tx.send(Message::Text(hello.into()));
         let _ = tx.send(Message::Text(apps_json(&st).into()));
     }

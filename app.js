@@ -521,7 +521,8 @@ $('#outTest').onclick = () => {
 /* ---------- Cineminha Áudio: programa do Windows que captura apps escolhidos ----------
    Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
    O site só tenta conectar depois que a pessoa baixou ou pediu para conectar, para não incomodar quem não usa. */
-const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null};
+const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: ''};
+const HELPER_LATEST = '1.1.0';
 const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.q=[];this.o=0;this.n=0;this.on=false;
 this.port.onmessage=e=>{if(e.data==='reset'){this.q=[];this.o=0;this.n=0;this.on=false;return}this.q.push(e.data);this.n+=e.data.length;
 while(this.n>28800&&this.q.length>1){const d=this.q.shift();this.n-=d.length-this.o;this.o=0}}}
@@ -558,7 +559,8 @@ function helperConnect(loud) {
   ws.onmessage = e => {
     if (typeof e.data !== 'string') { if (HP.node) HP.node.port.postMessage(new Float32Array(e.data), [e.data]); return; }
     let d; try { d = JSON.parse(e.data); } catch (_) { return; }
-    if (d.t === 'apps') { HP.apps = Array.isArray(d.list) ? d.list : []; HP.error = d.error || null; paintApps(); }
+    if (d.t === 'hello') { HP.ver = d.ver || '1.0.0'; paintApps(); }
+    else if (d.t === 'apps') { HP.apps = Array.isArray(d.list) ? d.list : []; HP.error = d.error || null; paintApps(); }
   };
   ws.onclose = () => {
     const was = HP.ok; HP.ok = false; HP.ws = null; HP.apps = []; paintApps();
@@ -572,6 +574,10 @@ function paintApps() {
   const list = $('#appList'), get = $('#appGet'), row = $('.mrow.apps');
   row.classList.toggle('conn', HP.ok);
   list.hidden = !HP.ok; get.hidden = HP.ok;
+  const foot = $('#appFoot'), old = HP.ok && HP.ver !== HELPER_LATEST;
+  foot.hidden = !HP.ok || !isWin; foot.classList.toggle('old', old);
+  $('#appVer').textContent = old ? 'Versão ' + (HP.ver || '1.0.0') + ' aberta. Há uma versão mais nova.' : 'Versão ' + HP.ver + ', a mais recente';
+  $('#appVer').classList.toggle('old', old);
   if (!HP.ok) {
     $('#appsSub').textContent = isWin ? 'Escolha programa por programa' : 'Disponível no Windows 10 e 11';
     $('#appGetT').innerHTML = !isWin ? 'O Cineminha Áudio funciona no <b>Windows 10 e 11</b>. Neste computador, use o som da tela ou a entrada extra.'
@@ -608,6 +614,7 @@ function paintApps() {
   $('#appsSub').textContent = 'Cineminha Áudio conectado · ' + on + ' de ' + HP.apps.length + ' apps';
 }
 $('#appDl').addEventListener('click', () => { $('#appGetH').hidden = false; helperPoll(180000); });
+$('#appDl2').addEventListener('click', () => { toast('Antes de abrir o arquivo novo, feche o atual: ícone azul perto do relógio › Sair.', 'info'); helperPoll(180000); });
 $('#appConn').onclick = () => { $('#appGetH').hidden = false; helperConnect(true); helperPoll(60000); };
 
 /* ---------- Chat ---------- */

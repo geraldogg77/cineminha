@@ -510,6 +510,13 @@ body.selfview .theirs{display:none!important}
 .app .nmw{flex:1;min-width:0;display:grid}
 .app input:not(:checked) ~ .nmw{opacity:.55}
 
+.appfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--line)}
+#appVer{font-size:12px;color:var(--muted)}
+#appVer.old{color:var(--warn)}
+.appfoot .btn{text-decoration:none}
+.appfoot .btn .i{width:16px;height:16px}
+.appfoot.old .btn{background:var(--accent);color:var(--on-accent)}
+
 /* ---------- Modo cinema ---------- */
 body.theater{grid-template-columns:minmax(0,1fr)}
 body.theater .rail,body.theater .side{display:none}
