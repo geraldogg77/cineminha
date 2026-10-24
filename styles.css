@@ -517,6 +517,11 @@ body.selfview .theirs{display:none!important}
 .appfoot .btn .i{width:16px;height:16px}
 .appfoot.old .btn{background:var(--accent);color:var(--on-accent)}
 
+.app .alvl{display:none;width:44px;height:5px;border-radius:5px;background:var(--bg2);overflow:hidden;flex:none;position:relative}
+.app.lv .alvl{display:block}
+.app.lv .play{display:none}
+.app .alvl i{position:absolute;inset:0;transform-origin:left;transform:scaleX(var(--al,0));background:linear-gradient(90deg,var(--ok) 0 60%,var(--warn) 80%,var(--live));transition:transform .12s linear}
+
 /* ---------- Modo cinema ---------- */
 body.theater{grid-template-columns:minmax(0,1fr)}
 body.theater .rail,body.theater .side{display:none}

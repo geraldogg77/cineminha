@@ -531,7 +531,7 @@ $('#outTest').onclick = () => {
    Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
    O site só tenta conectar depois que a pessoa baixou ou pediu para conectar, para não incomodar quem não usa. */
 const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: ''};
-const HELPER_LATEST = '1.1.0';
+const HELPER_LATEST = '1.2.0';
 const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.q=[];this.o=0;this.n=0;this.on=false;
 this.port.onmessage=e=>{if(e.data==='reset'){this.q=[];this.o=0;this.n=0;this.on=false;return}this.q.push(e.data);this.n+=e.data.length;
 while(this.n>28800&&this.q.length>1){const d=this.q.shift();this.n-=d.length-this.o;this.o=0}}}
@@ -570,6 +570,7 @@ function helperConnect(loud) {
     if (typeof e.data !== 'string') { if (HP.node) HP.node.port.postMessage(new Float32Array(e.data), [e.data]); return; }
     let d; try { d = JSON.parse(e.data); } catch (_) { return; }
     if (d.t === 'hello') { HP.ver = d.ver || '1.0.0'; paintApps(); }
+    else if (d.t === 'levels') { $$('.app').forEach(r => { const v = d.l && d.l[r.dataset.key]; r.style.setProperty('--al', Math.min(1, (v || 0) * 3.2).toFixed(3)); r.classList.toggle('lv', v != null); }); }
     else if (d.t === 'apps') { HP.apps = Array.isArray(d.list) ? d.list : []; HP.error = d.error || null; paintApps(); }
   };
   ws.onclose = () => {
@@ -607,7 +608,7 @@ function paintApps() {
   HP.apps.forEach(a => {
     const l = document.createElement('label'); l.className = 'app' + (a.active ? ' on' : ''); l.dataset.key = a.key;
     if (known.has(a.key)) l.style.animation = 'none';
-    l.innerHTML = '<input type="checkbox"><span class="box"><svg class="i"><use href="#i-check"/></svg></span>' + (a.icon ? '<img alt="">' : '<span class="ph2"></span>') + '<span class="nmw"><span class="nm"></span><small class="inc" hidden></small></span><span class="play" aria-hidden="true"><i></i><i></i><i></i></span>';
+    l.innerHTML = '<input type="checkbox"><span class="box"><svg class="i"><use href="#i-check"/></svg></span>' + (a.icon ? '<img alt="">' : '<span class="ph2"></span>') + '<span class="nmw"><span class="nm"></span><small class="inc" hidden></small></span><span class="play" aria-hidden="true"><i></i><i></i><i></i></span><span class="alvl" title="Som capturado deste app agora"><i></i></span>';
     const cb = l.querySelector('input'), p = S.appPrefs[a.key];
     cb.checked = p ? p.on : a.on;
     if (a.icon) l.querySelector('img').src = a.icon; else l.querySelector('.ph2').textContent = (a.name[0] || '?').toUpperCase();

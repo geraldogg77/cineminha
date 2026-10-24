@@ -341,6 +341,8 @@ fn mixer(shared: Shared) {
     let period = Duration::from_millis(10);
     let mut next = Instant::now() + period;
     let mut mix = vec![0f32; TICK * CH];
+    let mut energy: HashMap<u32, (f64, usize)> = HashMap::new();
+    let mut ticks = 0usize;
     loop {
         let now = Instant::now();
         if next > now { thread::sleep(next - now); } else if now - next > Duration::from_millis(60) { next = now; }
@@ -357,13 +359,28 @@ fn mixer(shared: Shared) {
             let mut b = cap.buf.lock().unwrap();
             if !cap.primed { if b.len() >= TICK * CH * 3 { cap.primed = true; } else { continue; } }
             let n = b.len().min(TICK * CH);
-            for (i, s) in b.drain(..n).enumerate() { mix[i] += s * g; }
+            let e = energy.entry(*pid).or_insert((0.0, 0));
+            for (i, s) in b.drain(..n).enumerate() { mix[i] += s * g; e.0 += (s * s) as f64; }
+            e.1 += TICK * CH;
             if n < TICK * CH { cap.primed = false; }
             if b.len() > TICK * CH * 10 { let extra = b.len() - TICK * CH * 3; b.drain(..extra); }
         }
         let mut bytes = Vec::with_capacity(mix.len() * 4);
         for s in &mix { bytes.extend_from_slice(&s.clamp(-1.0, 1.0).to_le_bytes()); }
         st.clients.retain(|c| !c.streaming.load(Ordering::Relaxed) || c.tx.send(Message::Binary(bytes.clone())).is_ok());
+        // a cada 150 ms, o nível de som de cada app (antes do volume), para o medidor da lista
+        ticks += 1;
+        if ticks % 15 == 0 {
+            let mut lv: HashMap<String, f64> = HashMap::new();
+            for a in &st.apps {
+                let mut best = 0f64;
+                for r in &a.roots { if let Some((sum, n)) = energy.get(r) { if *n > 0 { best = best.max((sum / *n as f64).sqrt()); } } }
+                lv.insert(a.key.clone(), (best * 1000.0).round() / 1000.0);
+            }
+            energy.clear();
+            let text = json!({"t": "levels", "l": lv}).to_string();
+            st.clients.retain(|c| !c.streaming.load(Ordering::Relaxed) || c.tx.send(Message::Text(text.clone().into())).is_ok());
+        }
     }
 }
 
