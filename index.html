@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" hrefgit add  .
+git commit -m "Foto de perfil"
+git push="styles.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -57,7 +59,7 @@
     <button class="ibtn h-only stopB" id="vcStop" title="Parar transmissão"><svg class="i"><use href="#stop"/></svg></button>
    </div>
   </div>
-  <div class="user"><div class="av on" id="meAv"></div><div class="ui"><b id="meName"></b><small id="meRole"></small></div><span class="sp"></span>
+  <div class="user"><div class="av on mepic" id="meAv"></div><div class="ui"><b id="meName"></b><small id="meRole"></small></div><span class="sp"></span>
    <button class="ibtn v-only" id="headB" data-act="mute" title="Mudo (M)"><svg class="i"><use href="#headset"/></svg></button>
    <button class="ibtn" data-act="settings" title="Configurações"><svg class="i"><use href="#cfg"/></svg></button></div>
  </div>
@@ -128,6 +130,8 @@
   <p class="note" id="need"></p>
  </div>
  <div class="pane" id="p-ap" hidden>
+  <div class="f"><span>Seu perfil</span><div class="pickrow"><button type="button" class="pick mepic" id="avPrev2" aria-label="Trocar foto de perfil"></button>
+   <div><small>Imagem ou GIF. GIFs de até 600 KB mantêm a animação. Fica salvo só neste navegador.</small><br><button type="button" class="link avrm">Remover foto</button></div></div></div>
   <label class="f"><span>Tema</span><select data-k="theme"><option value="dark">Escuro</option><option value="classic">Clássico</option><option value="oled">Meia-noite</option><option value="light">Claro</option></select></label>
   <div class="f"><span>Cor de destaque</span><div class="sw">
    <button data-c="#5865F2" style="background:#5865F2" aria-label="Azul"></button><button data-c="#23A55A" style="background:#23A55A" aria-label="Verde"></button><button data-c="#EB459E" style="background:#EB459E" aria-label="Rosa"></button><button data-c="#F0853C" style="background:#F0853C" aria-label="Laranja"></button><button data-c="#00A8FC" style="background:#00A8FC" aria-label="Ciano"></button><button data-c="#9B59F5" style="background:#9B59F5" aria-label="Roxo"></button>
@@ -137,10 +141,13 @@
  </div>
 </aside>
 <div class="toast" id="toast" role="status"></div>
+<input type="file" id="avFile" accept="image/*" hidden>
 
 <div class="modal" id="modal">
  <form class="card" id="nf">
   <h2>Bem-vindo</h2><p>Escolha um apelido para entrar no chat e na transmissão.</p>
+  <div class="pickrow"><button type="button" class="pick mepic" id="avPrev" aria-label="Escolher foto de perfil"></button>
+   <div><small>Foto de perfil (opcional). Aceita imagem ou GIF e fica salva só neste navegador.</small><br><button type="button" class="link avrm">Remover foto</button></div></div>
   <input id="ni" maxlength="20" required autofocus placeholder="Seu apelido" autocomplete="off" aria-label="Apelido">
   <button class="btn go">Entrar</button>
  </form>

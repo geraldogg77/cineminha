@@ -17,7 +17,51 @@ let peer, stream, call, hostConn, me = '', full = false, paused = false, last = 
 const viewers = new Map();
 const clean = s => String(s || '').trim().slice(0, 20);
 const hue = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
-const avatar = (el, n) => { el.textContent = (n[0] || '?').toUpperCase(); el.style.background = 'hsl(' + hue(n) + ',50%,42%)'; };
+/* Fotos de perfil: ficam no navegador de cada pessoa e só viajam pela conexão da sala */
+const avatars = {}; let myAv = '';
+const okAv = s => typeof s === 'string' && s.length < 900000 && /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(s) ? s : '';
+try { myAv = okAv(localStorage.getItem('tl-av') || ''); } catch (e) {}
+const pic = (el, src) => { el.textContent = ''; el.style.background = 'center/cover no-repeat url("' + src + '")'; };
+const avatar = (el, n) => {
+  const src = n === me && myAv ? myAv : avatars[n];
+  if (src) return pic(el, src);
+  el.textContent = (n[0] || '?').toUpperCase(); el.style.background = 'hsl(' + hue(n) + ',50%,42%)';
+};
+function paintMe() {
+  $$('.mepic').forEach(el => {
+    if (myAv) return pic(el, myAv);
+    const n = me || clean($('#ni').value) || '?';
+    el.textContent = n[0].toUpperCase(); el.style.background = 'hsl(' + hue(n) + ',50%,42%)';
+  });
+}
+function loadAvatar(file) {
+  return new Promise((res, rej) => {
+    if (!file || !file.type.startsWith('image/')) return rej('Escolha um arquivo de imagem.');
+    const fr = new FileReader();
+    fr.onerror = () => rej('Não consegui ler esse arquivo.');
+    fr.onload = () => {
+      if (file.type === 'image/gif' && file.size <= 600 * 1024) return res(fr.result);
+      const img = new Image();
+      img.onerror = () => rej('Não consegui abrir essa imagem.');
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = c.height = 160;
+        const s = Math.min(img.width, img.height);
+        c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 160, 160);
+        if (file.type === 'image/gif') toast('GIF acima de 600 KB: usei só o primeiro quadro.');
+        res(c.toDataURL('image/webp', .85));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+function setAv(src) {
+  myAv = src;
+  try { src ? localStorage.setItem('tl-av', src) : localStorage.removeItem('tl-av'); } catch (e) { toast('Sem espaço para salvar a foto: ela vale só nesta sessão.'); }
+  paintMe();
+  if (!me) return;
+  if (!target) users(); else if (hostConn && hostConn.open) hostConn.send({t: 'profile', av: myAv});
+}
 let tt; function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 2600); }
 const icon = (sel, id) => $$(sel + ' use').forEach(u => u.setAttribute('href', '#' + id));
 
@@ -106,6 +150,7 @@ function addMsg(m) {
 let lastList = [];
 function renderMembers(list) {
   lastList = list;
+  list.forEach(u => { u.av = okAv(u.av); if (u.av) avatars[u.name] = u.av; else delete avatars[u.name]; });
   const el = $('#members'), av = $('#avs'), on = badge.classList.contains('on'); el.textContent = ''; av.textContent = '';
   list.forEach(u => {
     const r = document.createElement('div'); r.className = 'mem';
@@ -114,7 +159,7 @@ function renderMembers(list) {
     r.querySelector('small').textContent = u.host ? (on ? 'Transmitindo agora' : 'Anfitrião') : 'Assistindo';
     el.append(r);
     const a = document.createElement('div'); a.className = 'av on' + (u.host && on ? ' talk' : ''); avatar(a, u.name); a.title = u.name; av.append(a);
-    if (u.host) { $('#roomIcon').textContent = (u.name[0] || '?').toUpperCase(); $('#roomName').textContent = $('#roomT').textContent = document.title = 'Sala de ' + u.name; }
+    if (u.host) { const ri = $('#roomIcon'); if (u.av) pic(ri, u.av); else { ri.style.background = ''; ri.textContent = (u.name[0] || '?').toUpperCase(); } $('#roomName').textContent = $('#roomT').textContent = document.title = 'Sala de ' + u.name; }
   });
   $('#memTitle').textContent = 'Membros — ' + list.length;
 }
@@ -122,8 +167,8 @@ const bcast = m => viewers.forEach(v => v.conn.open && v.conn.send(m));
 function post(m) { m.t = 'msg'; addMsg(m); bcast(m); }
 function sys(text) { const m = {t: 'sys', text}; addMsg(m); bcast(m); }
 function users() {
-  const list = [{name: me, host: true}];
-  viewers.forEach(v => v.name && list.push({name: v.name}));
+  const list = [{name: me, host: true, av: myAv}];
+  viewers.forEach(v => v.name && list.push({name: v.name, av: v.av}));
   renderMembers(list); bcast({t: 'users', list});
   $('#count').textContent = viewers.size + ' de ' + S.max + ' espectadores';
 }
@@ -185,7 +230,8 @@ function initHost() {
     });
     conn.on('data', d => {
       const v = viewers.get(conn.peer); if (!v || !d) return;
-      if (d.t === 'hello') { v.name = clean(d.name) || 'Convidado'; sys(v.name + ' entrou.'); users(); if (paused) conn.send({t: 'pause', v: true}); }
+      if (d.t === 'hello') { v.name = clean(d.name) || 'Convidado'; v.av = okAv(d.av); sys(v.name + ' entrou.'); users(); if (paused) conn.send({t: 'pause', v: true}); }
+      else if (d.t === 'profile') { v.av = okAv(d.av); users(); }
       else if (d.t === 'msg') { const text = String(d.text || '').trim().slice(0, 500); if (text) post({name: v.name, text, ts: Date.now()}); }
     });
     conn.on('close', () => {
@@ -273,7 +319,7 @@ function initViewer() {
 function connect() {
   if (full) return;
   const c = peer.connect(target, {reliable: true}); hostConn = c;
-  c.on('open', () => { c.send({t: 'hello', name: me}); if (!vid.srcObject) setStatus('Conectado', false, 'Aguardando a transmissão começar.'); });
+  c.on('open', () => { c.send({t: 'hello', name: me, av: myAv}); if (!vid.srcObject) setStatus('Conectado', false, 'Aguardando a transmissão começar.'); });
   c.on('data', d => {
     if (!d) return;
     if (d.t === 'full') { full = true; setStatus('Sala cheia', false, 'Já há ' + d.max + ' pessoas assistindo.'); }
@@ -315,12 +361,16 @@ setInterval(async () => {
 
 /* ---------- Início ---------- */
 try { $('#ni').value = localStorage.getItem('tl-name') || ''; } catch (e) {}
-sync(); showPane(target ? 'p-ap' : 'p-tx');
+sync(); showPane(target ? 'p-ap' : 'p-tx'); paintMe();
+$$('.pick').forEach(b => b.onclick = () => $('#avFile').click());
+$$('.avrm').forEach(b => b.onclick = () => setAv(''));
+$('#avFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { setAv(await loadAvatar(f)); } catch (m) { toast(String(m)); } };
+$('#ni').addEventListener('input', paintMe);
 $('#nf').onsubmit = e => {
   e.preventDefault();
   me = clean($('#ni').value); if (!me) return;
   try { localStorage.setItem('tl-name', me); } catch (_) {}
-  avatar($('#meAv'), me); $('#meName').textContent = me; $('#meRole').textContent = target ? 'Espectador' : 'Anfitrião';
+  paintMe(); $('#meName').textContent = me; $('#meRole').textContent = target ? 'Espectador' : 'Anfitrião';
   $('#modal').classList.add('out'); setTimeout(() => $('#modal').remove(), 250);
   addMsg({t: 'sys', text: 'Bem-vindo ao chat, ' + me + '.'});
   if (!target && !(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)) $('#hint').textContent = 'Este navegador não permite compartilhar a tela. Use Chrome ou Edge no computador.';
