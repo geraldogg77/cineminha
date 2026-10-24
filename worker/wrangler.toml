@@ -1,0 +1,10 @@
+name = "cineminha-turn"
+main = "turn.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://geraldogg77.github.io"
+
+# Segredos (não coloque aqui):
+#   npx wrangler secret put TURN_KEY_ID
+#   npx wrangler secret put TURN_KEY_API_TOKEN

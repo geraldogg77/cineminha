@@ -3,10 +3,33 @@ const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAl
 const vid = $('#v'), badge = $('#badge'), stage = $('#stage'), root = document.documentElement;
 const target = new URLSearchParams(location.search).get('v');
 document.body.classList.add(target ? 'viewer' : 'host');
-const ICE = {iceServers: [
+/* Endereço do Worker que gera credenciais TURN temporárias (pasta worker/).
+   Vazio: usa o servidor público gratuito como antes. */
+const TURN_URL = '';
+const FALLBACK_ICE = [
   {urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'},
   {urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject'}
-]};
+];
+const ICE = {iceServers: FALLBACK_ICE};
+let relayName = 'servidor público', iceT = 0;
+/* Busca credenciais novas. Em falha mantém as atuais (ou as públicas) e tenta de novo depois. */
+async function loadIce() {
+  clearTimeout(iceT);
+  if (!TURN_URL) return;
+  let ttl = 0;
+  try {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), 5000);
+    const r = await fetch(TURN_URL, {signal: ac.signal, cache: 'no-store'}); clearTimeout(t);
+    const d = await r.json();
+    if (!r.ok || !Array.isArray(d.iceServers) || !d.iceServers.length) throw new Error(d.error || r.status);
+    ICE.iceServers = d.iceServers; relayName = 'Cloudflare'; ttl = d.ttl || 43200;
+    if (peer && peer.options) peer.options.config = {iceServers: ICE.iceServers};
+  } catch (e) {
+    console.warn('TURN: usando o servidor público.', e);
+  }
+  /* renova 1 hora antes de expirar; sem sucesso, tenta de novo em 5 minutos */
+  iceT = setTimeout(loadIce, ttl ? Math.max(600, ttl - 3600) * 1000 : 300000);
+}
 const RES = {720: [1280, 720], 1080: [1920, 1080], 1440: [2560, 1440], 2160: [3840, 2160]};
 const PRE = {
   bal: {res: 1080, fps: 30, br: 6, prio: 'motion'}, alta: {res: 1080, fps: 60, br: 12, prio: 'motion'},
@@ -391,7 +414,9 @@ function boost(sdp, mbps) {
   }
   return out.join('\r\n');
 }
-function initHost() {
+async function initHost() {
+  setStatus('Preparando a sala…', false, '');
+  await loadIce();
   let id; try { id = localStorage.getItem('tl-id'); } catch (e) {}
   if (!id) { id = 'tl' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('tl-id', id); } catch (e) {} }
   peer = new Peer(id, {config: ICE});
@@ -504,8 +529,9 @@ $('#newRoom').onclick = async () => {
 };
 
 /* ---------- Espectador ---------- */
-function initViewer() {
+async function initViewer() {
   setStatus('Conectando à sala…', false, '');
+  await loadIce();
   peer = new Peer({config: ICE});
   peer.on('open', connect);
   peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
@@ -574,11 +600,11 @@ setInterval(async () => {
     }
   });
   if (!st) return;
-  if (rel && !last.w) { last.w = 1; toast('Esta conexão passa por um servidor intermediário e fica mais lenta. Veja as estatísticas (S).', 'info'); }
+  if (rel && !last.w && relayName !== 'Cloudflare') { last.w = 1; toast('Esta conexão passa por um servidor público intermediário e pode ficar lenta. Veja as estatísticas (S).', 'info'); }
   $('#res').textContent = $('#vcS').textContent = st.w + '×' + st.h + ' · ' + st.fps + ' fps · ' + st.mbps.toFixed(1) + ' Mbps';
   const L = {none: 'nenhuma', bandwidth: 'upload insuficiente', cpu: 'processador no limite', other: 'outra'};
   const rows = [['Resolução', st.w + '×' + st.h], ['Quadros', st.fps + ' fps'], ['Taxa', st.mbps.toFixed(1) + ' Mbps'], ['Codec', st.codec],
-    ['Latência', rtt != null ? rtt + ' ms' : '-'], ['Conexão', rel ? 'intermediada (lenta)' : 'direta']];
+    ['Latência', rtt != null ? rtt + ' ms' : '-'], ['Conexão', rel ? 'via ' + relayName : 'direta']];
   if (st.loss != null) rows.push(['Pacotes perdidos', st.loss]);
   if (st.lim) rows.push(['Limitação', L[st.lim] || st.lim]);
   $('#stats').textContent = rows.map(r => r[0].padEnd(18, ' ') + r[1]).join('\n');
