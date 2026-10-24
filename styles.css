@@ -495,6 +495,21 @@ body.selfview .theirs{display:none!important}
 .mrow.apps:not(.conn) .mbot{display:none}
 .mrow.apps.conn .mtop .mic{color:var(--ok);background:color-mix(in srgb,var(--ok) 16%,transparent)}
 
+/* ---------- Voz na sala ---------- */
+.btn.sm{height:30px;padding:0 12px;font-size:13px;border-radius:8px}
+.mbot .lbl{font-size:12px;color:var(--muted)}
+.mrow[data-src=out] .mtop .mic{color:var(--accent);background:var(--accent-soft)}
+.av{transition:box-shadow var(--t1)}
+.av.speak{box-shadow:0 0 0 2px var(--bg1),0 0 0 4px var(--ok)}
+.avs .av.speak{box-shadow:0 0 0 4px #0B0A0E,0 0 0 7px var(--ok)}
+.vmic{width:15px;height:15px;color:var(--muted);flex:none;margin-left:auto}
+.vmic.off{color:var(--faint)}
+#headB.deaf{color:var(--live)}
+.applist .warn2{font-size:12px;color:var(--warn);margin:0 4px 4px;text-wrap:pretty}
+.app .inc{display:block;font-size:11.5px;color:var(--muted);white-space:normal}
+.app .nmw{flex:1;min-width:0;display:grid}
+.app input:not(:checked) ~ .nmw{opacity:.55}
+
 /* ---------- Modo cinema ---------- */
 body.theater{grid-template-columns:minmax(0,1fr)}
 body.theater .rail,body.theater .side{display:none}

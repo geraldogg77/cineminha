@@ -43,8 +43,9 @@ struct App {
     key: String,      // caminho do executável em minúsculas
     name: String,     // nome amigável (descrição do arquivo)
     icon: String,     // data:image/png;base64,...
-    roots: Vec<u32>,  // processos raiz que tocam som
+    roots: Vec<u32>,  // processos donos das sessões de áudio (alvos da captura)
     active: bool,     // tocando agora
+    includes: Vec<String>, // outros apps que entram junto (o Windows captura o app e tudo que ele abriu)
 }
 
 struct Pref { on: bool, vol: f32 }
@@ -58,6 +59,7 @@ struct State {
     caps: HashMap<u32, Cap>,
     version: usize,
     error: Option<String>,
+    tree: HashMap<u32, HashSet<u32>>,
 }
 
 struct Cap { stop: Arc<AtomicBool>, buf: Arc<Mutex<VecDeque<f32>>>, primed: bool }
@@ -112,18 +114,6 @@ fn process_table() -> HashMap<u32, (u32, String)> {
     map
 }
 
-/// Sobe na árvore enquanto o pai for o mesmo programa (navegadores tocam som num processo filho).
-fn root_of(pid: u32, table: &HashMap<u32, (u32, String)>) -> u32 {
-    let mut cur = pid;
-    for _ in 0..32 {
-        let Some((parent, name)) = table.get(&cur) else { break };
-        match table.get(parent) {
-            Some((_, pname)) if pname == name && *parent != cur => cur = *parent,
-            _ => break,
-        }
-    }
-    cur
-}
 
 fn file_description(path: &str) -> Option<String> {
     unsafe {
@@ -217,33 +207,60 @@ fn audio_sessions() -> Vec<(u32, bool)> {
     out
 }
 
-fn scan_apps(icons: &mut HashMap<String, (String, String)>) -> Vec<App> {
+/// Programas do próprio Windows que abrem quase todos os outros: capturar um deles
+/// levaria o som do computador inteiro, então ficam fora da lista.
+const SHELL: &[&str] = &["explorer.exe", "sihost.exe", "svchost.exe", "audiodg.exe", "runtimebroker.exe",
+    "shellexperiencehost.exe", "startmenuexperiencehost.exe", "applicationframehost.exe", "textinputhost.exe",
+    "dwm.exe", "winlogon.exe", "services.exe", "taskhostw.exe", "searchhost.exe", "systemsettings.exe"];
+
+/// todos os descendentes de um processo
+fn descendants(pid: u32, table: &HashMap<u32, (u32, String)>) -> HashSet<u32> {
+    let mut out = HashSet::new();
+    let mut stack = vec![pid];
+    while let Some(p) = stack.pop() {
+        for (c, (parent, _)) in table.iter() {
+            if *parent == p && *c != p && out.insert(*c) { stack.push(*c); }
+        }
+    }
+    out
+}
+
+fn scan_apps(icons: &mut HashMap<String, (String, String)>) -> (Vec<App>, HashMap<u32, HashSet<u32>>) {
     let me = std::process::id();
     let table = process_table();
     let my_exe = exe_path(me).unwrap_or_default().to_lowercase();
     let mut groups: HashMap<String, App> = HashMap::new();
     for (pid, active) in audio_sessions() {
-        let root = root_of(pid, &table);
-        let Some(path) = exe_path(root).or_else(|| exe_path(pid)) else { continue };
+        let exe_name = table.get(&pid).map(|t| t.1.clone()).unwrap_or_default();
+        if SHELL.contains(&exe_name.as_str()) { continue; }
+        let Some(path) = exe_path(pid) else { continue };
         let key = path.to_lowercase();
         if key == my_exe { continue; }
         let (name, icon) = icons.entry(key.clone()).or_insert_with(|| {
             let stem = std::path::Path::new(&path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
             (file_description(&path).unwrap_or(stem), icon_png(&path))
         }).clone();
-        let g = groups.entry(key.clone()).or_insert(App { key, name, icon, roots: vec![], active: false });
-        if !g.roots.contains(&root) { g.roots.push(root); }
+        let g = groups.entry(key.clone()).or_insert(App { key, name, icon, roots: vec![], active: false, includes: vec![] });
+        if !g.roots.contains(&pid) { g.roots.push(pid); }
         g.active |= active;
     }
     let mut apps: Vec<App> = groups.into_values().collect();
+    // quem leva quem junto: o Windows captura o processo e todos os filhos dele
+    let mut tree: HashMap<u32, HashSet<u32>> = HashMap::new();
+    for a in &apps { for r in &a.roots { tree.insert(*r, descendants(*r, &table)); } }
+    let snapshot: Vec<(String, Vec<u32>)> = apps.iter().map(|a| (a.name.clone(), a.roots.clone())).collect();
+    for a in apps.iter_mut() {
+        let mine: HashSet<u32> = a.roots.iter().flat_map(|r| tree.get(r).cloned().unwrap_or_default()).collect();
+        a.includes = snapshot.iter().filter(|(n, roots)| *n != a.name && roots.iter().any(|r| mine.contains(r))).map(|(n, _)| n.clone()).collect();
+    }
     apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    apps
+    (apps, tree)
 }
 
 fn apps_json(st: &State) -> String {
     let list: Vec<_> = st.apps.iter().map(|a| {
         let (on, vol) = pref_of(&st.prefs, &a.key);
-        json!({"key": a.key, "name": a.name, "icon": a.icon, "active": a.active, "on": on, "vol": (vol * 100.0).round()})
+        json!({"key": a.key, "name": a.name, "icon": a.icon, "active": a.active, "on": on, "vol": (vol * 100.0).round(), "includes": a.includes})
     }).collect();
     json!({"t": "apps", "list": list, "error": st.error}).to_string()
 }
@@ -309,6 +326,9 @@ fn manage_captures(shared: &Shared) {
     let mut want: HashSet<u32> = HashSet::new();
     if streaming {
         for a in &st.apps { if pref_of(&st.prefs, &a.key).0 { want.extend(a.roots.iter().copied()); } }
+        // um alvo que já está dentro da árvore de outro alvo sairia duplicado
+        let covered: HashSet<u32> = want.iter().filter(|p| want.iter().any(|o| o != *p && st.tree.get(o).map_or(false, |d| d.contains(p)))).copied().collect();
+        want.retain(|p| !covered.contains(p));
     }
     let running: Vec<u32> = st.caps.keys().copied().collect();
     for pid in running { if !want.contains(&pid) { if let Some(c) = st.caps.remove(&pid) { c.stop.store(true, Ordering::Relaxed); } } }
@@ -563,7 +583,7 @@ fn main() {
         Ok(l) => l,
         Err(_) => { message_box("Não foi possível iniciar: a porta 47833 está em uso por outro programa."); return; }
     };
-    let shared: Shared = Arc::new(Mutex::new(State { apps: vec![], prefs: HashMap::new(), clients: vec![], caps: HashMap::new(), version: 0, error: None }));
+    let shared: Shared = Arc::new(Mutex::new(State { apps: vec![], prefs: HashMap::new(), clients: vec![], caps: HashMap::new(), version: 0, error: None, tree: HashMap::new() }));
 
     { let sh = shared.clone(); thread::spawn(move || serve(sh, listener)); }
     { let sh = shared.clone(); thread::spawn(move || mixer(sh)); }
@@ -576,10 +596,10 @@ fn main() {
             let mut last_sent = String::new();
             let mut last_version = usize::MAX;
             loop {
-                let apps = scan_apps(&mut icons);
+                let (apps, tree) = scan_apps(&mut icons);
                 {
                     let mut st = sh.lock().unwrap();
-                    st.apps = apps;
+                    st.apps = apps; st.tree = tree;
                     let text = apps_json(&st);
                     if text != last_sent || st.version != last_version {
                         last_sent = text.clone(); last_version = st.version;

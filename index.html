@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=12">
+<link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body class="booting">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -40,6 +40,7 @@
 <symbol id="i-mix" viewBox="0 0 24 24"><path d="M6 4v16M12 4v16M18 4v16"/><rect x="4" y="13" width="4" height="3" rx="1"/><rect x="10" y="7" width="4" height="3" rx="1"/><rect x="16" y="11" width="4" height="3" rx="1"/></symbol>
 <symbol id="i-apps" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
 <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+<symbol id="i-deaf" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 13.7-5.6M20 12v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/><path d="M3 3l18 18"/></symbol>
 <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
 <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
 <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></symbol>
@@ -75,7 +76,7 @@
   </div>
   <div class="user"><div class="av on mepic" id="meAv"></div><div class="ui"><b id="meName">Você</b><small id="meRole"></small></div><span class="sp"></span>
    <button class="ibtn micB" data-act="mic" data-tip="Microfone" data-kbd="V" aria-label="Ligar ou desligar microfone"><svg class="i"><use href="#i-micoff"/></svg></button>
-   <button class="ibtn" id="headB" data-act="mute" data-tip="Som de quem você assiste" data-kbd="M" aria-label="Ativar ou desativar som"><svg class="i"><use href="#i-headset"/></svg></button>
+   <button class="ibtn" id="headB" data-act="deaf" data-tip="Desligar o som da sala" data-kbd="D" aria-label="Ligar ou desligar o som da sala"><svg class="i"><use href="#i-headset"/></svg></button>
    <button class="ibtn" data-act="settings" data-tip="Configurações" aria-label="Configurações"><svg class="i"><use href="#i-cfg"/></svg></button></div>
  </div>
 </aside>
@@ -142,6 +143,20 @@
  <div class="dh"><h2>Configurações</h2><span class="sp"></span><button class="ibtn" id="dclose" aria-label="Fechar"><svg class="i"><use href="#i-x"/></svg></button></div>
  <div class="tabs" role="tablist"><span class="tabind"></span><button class="tab on" data-p="p-tx" role="tab">Transmissão</button><button class="tab" data-p="p-ap" role="tab">Aparência</button></div>
  <div class="pane" id="p-tx">
+  <section class="f" id="voiceSec"><span class="fl">Voz na sala</span>
+   <div class="mix">
+    <div class="mrow" data-src="mic">
+     <div class="mtop"><span class="mic"><svg class="i"><use href="#i-mic"/></svg></span><span class="mt"><b>Microfone</b><small>Todos na sala ouvem você, transmitindo ou não</small></span><label class="switch"><input type="checkbox" data-k="mxMic" aria-label="Microfone"><i aria-hidden="true"></i></label></div>
+     <select data-k="micDev" class="devsel" aria-label="Microfone usado"><option value="">Microfone padrão</option></select>
+     <div class="mbot"><input class="rng" type="range" data-k="vMic" data-n min="0" max="150" step="1" aria-label="Volume do microfone"><span class="meter" data-m="mic"><i></i></span><b class="pct" data-pct="vMic"></b></div>
+    </div>
+    <div class="mrow" data-src="out">
+     <div class="mtop"><span class="mic"><svg class="i"><use href="#i-headset"/></svg></span><span class="mt"><b>Saída de áudio</b><small>Onde você ouve as vozes e as telas</small></span><button type="button" class="btn sm" id="outTest">Testar</button></div>
+     <select data-k="outDev" class="devsel" aria-label="Saída de áudio"><option value="">Padrão do sistema</option></select>
+     <div class="mbot"><input class="rng" type="range" data-k="vVoice" data-n min="0" max="100" step="1" aria-label="Volume das vozes"><span class="lbl">Vozes</span><b class="pct" data-pct="vVoice"></b></div>
+    </div>
+   </div>
+  </section>
   <section class="f" id="mixSec"><span class="fl">Áudio da sua transmissão</span>
    <div class="mix">
     <div class="mrow apps" data-src="apps">
@@ -159,11 +174,6 @@
     <div class="mrow" data-src="screen">
      <div class="mtop"><span class="mic"><svg class="i"><use href="#i-monitor"/></svg></span><span class="mt"><b>Som da tela</b><small>Áudio capturado junto com a tela ou aba</small></span><label class="switch"><input type="checkbox" data-k="mxScreen" aria-label="Som da tela"><i aria-hidden="true"></i></label></div>
      <div class="mbot"><input class="rng" type="range" data-k="vScreen" data-n min="0" max="150" step="1" aria-label="Volume do som da tela"><span class="meter" data-m="screen"><i></i></span><b class="pct" data-pct="vScreen"></b></div>
-    </div>
-    <div class="mrow" data-src="mic">
-     <div class="mtop"><span class="mic"><svg class="i"><use href="#i-mic"/></svg></span><span class="mt"><b>Microfone</b><small>Sua voz para quem assiste sua tela</small></span><label class="switch"><input type="checkbox" data-k="mxMic" aria-label="Microfone"><i aria-hidden="true"></i></label></div>
-     <select data-k="micDev" class="devsel" aria-label="Microfone usado"><option value="">Microfone padrão</option></select>
-     <div class="mbot"><input class="rng" type="range" data-k="vMic" data-n min="0" max="150" step="1" aria-label="Volume do microfone"><span class="meter" data-m="mic"><i></i></span><b class="pct" data-pct="vMic"></b></div>
     </div>
     <div class="mrow" data-src="extra">
      <div class="mtop"><span class="mic"><svg class="i"><use href="#i-mix"/></svg></span><span class="mt"><b>Entrada extra</b><small>Um dispositivo de áudio, como um cabo virtual</small></span><label class="switch"><input type="checkbox" data-k="mxExtra" aria-label="Entrada extra"><i aria-hidden="true"></i></label></div>
@@ -200,7 +210,7 @@
    <label class="custom" aria-label="Cor personalizada"><input type="color" id="acc"><svg class="i"><use href="#i-plus"/></svg></label></div></div>
   <label class="tg"><span><b>Reduzir animações</b><small>Desliga transições e efeitos de movimento.</small></span><input type="checkbox" data-k="calm"><i aria-hidden="true"></i></label>
   <div class="f"><span class="fl">Atalhos</span><ul class="keys">
-   <li><kbd>F</kbd>Tela cheia</li><li><kbd>T</kbd>Modo cinema</li><li><kbd>C</kbd>Chat</li><li><kbd>S</kbd>Estatísticas</li><li><kbd>M</kbd>Som de quem você assiste</li><li><kbd>V</kbd>Microfone</li><li><kbd>P</kbd>Pausar sua imagem</li></ul></div>
+   <li><kbd>F</kbd>Tela cheia</li><li><kbd>T</kbd>Modo cinema</li><li><kbd>C</kbd>Chat</li><li><kbd>S</kbd>Estatísticas</li><li><kbd>M</kbd>Som de quem você assiste</li><li><kbd>V</kbd>Microfone</li><li><kbd>D</kbd>Som da sala</li><li><kbd>P</kbd>Pausar sua imagem</li></ul></div>
  </div>
 </aside>
 
@@ -227,6 +237,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

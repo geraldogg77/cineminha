@@ -12,12 +12,15 @@ Transmita sua tela para até 4 amigos direto do navegador, com áudio e chat ao 
 
 Funciona melhor no Chrome ou Edge no computador. Quem assiste pode usar qualquer navegador, inclusive no celular.
 
+## Voz na sala
+
+Ligue o **Microfone** (botão de microfone ou tecla V) e todos na sala ouvem você, transmitindo a tela ou não, como num canal de voz. Quem está falando ganha um anel verde no avatar. Em **Configurações → Transmissão → Saída de áudio** você escolhe onde ouvir as vozes e as telas, por exemplo o seu headset, e pode tocar um som de teste. O botão de fone (tecla D) desliga todo o som da sala para você.
+
 ## Áudio da transmissão
 
 No mixer (botão de controles deslizantes ou **Configurações → Transmissão**), cada fonte tem liga/desliga, volume e medidor:
 
 - **Som da tela**: o áudio que o navegador captura junto com a tela ou aba. Para levar o som, marque a opção de compartilhar áudio na janela de escolha da tela.
-- **Microfone**: sua voz para quem assiste sua tela. Também liga e desliga pelo botão de microfone ou pela tecla V.
 - **Entrada extra**: qualquer dispositivo de entrada de áudio, como um cabo virtual.
 
 ### Cineminha Áudio (escolher apps no Windows)
@@ -25,7 +28,8 @@ No mixer (botão de controles deslizantes ou **Configurações → Transmissão*
 O navegador sozinho não separa o som de cada programa. Para escolher app por app, como na lista de compartilhamento do Discord, existe o **Cineminha Áudio**: um programa de 650 KB para Windows 10 e 11, sem instalação, que fica na bandeja perto do relógio.
 
 1. No mixer, clique em **Baixar Cineminha Áudio** e abra o arquivo. Como o programa não tem assinatura digital paga, o Windows pode avisar que protegeu o computador: clique em **Mais informações** › **Executar assim mesmo**.
-2. O site conecta sozinho e mostra os apps que estão tocando som. Desmarque os que devem ficar de fora.
+2. O site conecta sozinho e mostra os apps que estão tocando som. Desmarque os que devem ficar de fora e deixe o **Som da tela** desligado, porque ele leva o som do computador inteiro.
+   O Windows captura um app junto com os programas que ele abriu: o Steam, por exemplo, leva junto os jogos abertos por ele. Quando isso acontece, a lista mostra "Leva junto" embaixo do app.
 3. Se o navegador pedir acesso a dispositivos da rede local, clique em **Permitir**: é assim que a página conversa com o programa no seu computador.
 
 O programa só captura enquanto você transmite, só aceita conexões do próprio computador vindas do site do Cineminha e não envia nada para a internet: quem manda o som para a sala é o navegador. O código está em `helper/` e o arquivo pronto em `download/`. Para gerar de novo: `cd helper && cargo zigbuild --release --target x86_64-pc-windows-gnu`.
@@ -42,6 +46,7 @@ Sem o Cineminha Áudio também dá: instale o VB-CABLE (gratuito), mande a saíd
 | S | Estatísticas da conexão |
 | M | Som de quem você assiste |
 | V | Ligar ou desligar seu microfone |
+| D | Ligar ou desligar o som da sala |
 | P | Pausar sua imagem |
 
 ## Servidor TURN (Cloudflare)

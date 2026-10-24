@@ -38,7 +38,7 @@ const PRE = {
 };
 const S = {theme: 'dark', accent: '#5B7CFA', calm: false, res: 1080, fps: 60, br: 12, prio: 'motion', codec: 'auto', abr: 320, max: 2,
   mxScreen: true, vScreen: 100, mxMic: false, vMic: 100, micDev: '', mxExtra: false, vExtra: 100, extDev: '',
-  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false};
+  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false, outDev: '', vVoice: 100};
 try { Object.assign(S, JSON.parse(localStorage.getItem('tl-set') || '{}')); } catch (e) {}
 if (!['dark', 'classic', 'oled', 'light'].includes(S.theme)) S.theme = 'dark';
 S.max = Math.min(10, Math.max(1, +S.max || 2));
@@ -50,7 +50,7 @@ let peer, myId = '', hostConn = null, me = '', full = false, paused = false, las
 let stream = null, disp = null, preview = null;
 const outCalls = new Map();      // quem está assistindo minha tela: id → chamada
 const guests = new Map();        // só no anfitrião: id → {conn, name, av, live}
-let want = null, inCall = null, inStream = null, reqAt = 0, wantMuted = true;
+let want = null, inCall = null, inStream = null, reqAt = 0, wantMuted = true, deaf = false;
 const clean = s => String(s || '').trim().slice(0, 20);
 const hue = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const play = () => { const p = vid.play(); if (p) p.catch(() => {}); };
@@ -276,7 +276,6 @@ function ask(title, desc, yes) {
 function syncVol() {
   const m = wantMuted || vid.volume === 0;
   $$('#muteB use').forEach(u => u.setAttribute('href', m ? '#i-mute' : '#i-vol'));
-  $('#headB').classList.toggle('off', m);
   const r = $('#vol'); r.value = wantMuted ? 0 : vid.volume; fill(r);
 }
 function setChat(show) {
@@ -300,13 +299,14 @@ const act = {
   mic: () => {
     S.mxMic = !S.mxMic; save(); sync(); mixChanged('mxMic');
     $$('.micB').forEach(b => { b.classList.add('flip'); setTimeout(() => b.classList.remove('flip'), 160); });
-    toast(S.mxMic ? (stream ? 'Microfone ligado na sua transmissão' : 'Microfone vai entrar quando você transmitir') : 'Microfone desligado', S.mxMic ? 'ok' : 'info');
+    toast(S.mxMic ? 'Microfone ligado: todos na sala ouvem você' : 'Microfone desligado', S.mxMic ? 'ok' : 'info');
   },
   pip: () => {
     if (document.pictureInPictureElement) return document.exitPictureInPicture();
     if (!vid.srcObject) return toast('Comece ou aguarde a transmissão para usar imagem sobre imagem.', 'info');
     vid.requestPictureInPicture ? vid.requestPictureInPicture().catch(() => toast('Imagem sobre imagem indisponível agora.', 'err')) : toast('Seu navegador não suporta imagem sobre imagem.', 'err');
   },
+  deaf: () => { deaf = !deaf; paintDeaf(); toast(deaf ? 'Som da sala desligado: você não ouve vozes nem telas' : 'Som da sala ligado', deaf ? 'info' : 'ok'); },
   mute: () => { wantMuted = !wantMuted; if (!wantMuted && vid.volume === 0) vid.volume = 1; $('#sound').hidden = true; applyMute(); syncVol(); },
   pause: () => {
     if (!stream) return toast('Inicie a transmissão antes de pausar.', 'info');
@@ -330,12 +330,12 @@ document.addEventListener('keydown', e => {
     return;
   }
   if ($('#modal') || !$('#confirm').hidden || e.target.closest('input,select,textarea,[contenteditable]') || e.ctrlKey || e.metaKey || e.altKey) return;
-  const k = e.key.toLowerCase(), m = {f: 'fs', t: 'theater', c: 'chat', s: 'stats', m: 'mute', p: 'pause', v: 'mic'}[k];
+  const k = e.key.toLowerCase(), m = {f: 'fs', t: 'theater', c: 'chat', s: 'stats', m: 'mute', p: 'pause', v: 'mic', d: 'deaf'}[k];
   if (m) { e.preventDefault(); act[m](); wake(); }
 });
 $('#sound').onclick = () => { wantMuted = false; if (vid.volume === 0) vid.volume = 1; applyMute(); play(); $('#sound').hidden = true; syncVol(); };
 $('#vol').oninput = e => { vid.volume = +e.target.value; wantMuted = vid.volume === 0; $('#sound').hidden = true; applyMute(); syncVol(); };
-const applyMute = () => { vid.muted = want === myId || wantMuted; };
+const applyMute = () => { vid.muted = want === myId || wantMuted || deaf; };
 
 /* ---------- Mixer de áudio da minha transmissão ----------
    Som da tela, microfone e entrada extra passam por ganhos separados e viram uma só faixa.
@@ -387,6 +387,14 @@ async function refreshDevices() {
   };
   fillSel($('select[data-k=micDev]'), 'Microfone padrão do sistema');
   fillSel($('select[data-k=extDev]'), 'Escolha um dispositivo');
+  try {
+    const outs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications');
+    const sel = $('select[data-k=outDev]'); sel.textContent = '';
+    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = 'Padrão do sistema'; sel.append(o0);
+    outs.forEach((d, i) => { const o = document.createElement('option'); o.value = d.deviceId; o.textContent = d.label || 'Saída de áudio ' + (i + 1); if (/head|fone|auricular|earphone|buds/i.test(d.label)) o.dataset.d = 'Fone'; sel.append(o); });
+    if (sel._rebuild) sel._rebuild();
+    $('.mrow[data-src=out]').hidden = !('setSinkId' in HTMLMediaElement.prototype);
+  } catch (e) {}
   if (!S.extDev) { const v = list.find(d => /cable output|vb-audio|voicemeeter/i.test(d.label)); if (v) { S.extDev = v.deviceId; save(); } }
   sync();
 }
@@ -396,7 +404,8 @@ $('#devPerm').onclick = async () => {
 };
 if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
 async function openInput(key) {
-  const [on] = GK[key], dev = key === 'mic' ? S.micDev : S.extDev;
+  if (key === 'mic') return voiceMic();
+  const [on] = GK[key], dev = S.extDev;
   if (!stream || !S[on]) { detach(key, true); return; }
   if (key === 'extra' && !dev) { toast('Escolha qual dispositivo usar na entrada extra.', 'info'); return; }
   try {
@@ -411,11 +420,13 @@ async function openInput(key) {
   }
 }
 function mixChanged(k) {
-  if (k === 'mxScreen' || k === 'vScreen') gain('screen');
+  if (k === 'mxScreen' || k === 'vScreen') { gain('screen'); paintApps(); }
   else if (k === 'vMic') gain('mic');
   else if (k === 'vExtra') gain('extra');
   else if (k === 'mxApps' || k === 'vApps') { gain('apps'); helperStream(); }
-  else if (k === 'mxMic' || k === 'micDev') openInput('mic');
+  else if (k === 'mxMic' || k === 'micDev') voiceMic();
+  else if (k === 'outDev') applySinks();
+  else if (k === 'vVoice') VO.inc.forEach(v => { v.el.volume = S.vVoice / 100; });
   else if (k === 'mxExtra' || k === 'extDev') openInput('extra');
 }
 (function meters() {
@@ -429,6 +440,83 @@ function mixChanged(k) {
   requestAnimationFrame(meters);
 })();
 
+
+/* ---------- Voz na sala ----------
+   Quem liga o microfone liga uma chamada só de áudio para cada pessoa da sala.
+   A voz não depende de transmitir a tela: todo mundo ouve todo mundo, como num canal de voz. */
+const VO = {dest: null, out: new Map(), inc: new Map(), on: false};
+async function voiceMic() {
+  if (!S.mxMic) { stopVoice(); return; }
+  if (!me || !navigator.mediaDevices) return;
+  try {
+    const ms = await navigator.mediaDevices.getUserMedia({audio: {deviceId: S.micDev ? {exact: S.micDev} : undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1}});
+    if (!S.mxMic) { ms.getTracks().forEach(t => t.stop()); return; }
+    const ctx = mixCtx();
+    if (!VO.dest) VO.dest = ctx.createMediaStreamDestination();
+    detach('mic', true);
+    const src = ctx.createMediaStreamSource(ms), g = ctx.createGain(), an = ctx.createAnalyser(); an.fftSize = 512;
+    src.connect(g); g.connect(an); g.connect(VO.dest);
+    MX.nodes.mic = {ms, src, g, an, buf: new Uint8Array(an.fftSize)}; gain('mic');
+    if (!devOk) refreshDevices();
+    if (!VO.on) { VO.on = true; toRoom({t: 'voice', on: true}); }
+    syncVoice();
+  } catch (e) {
+    S.mxMic = false; save(); sync();
+    toast('Não foi possível usar o microfone. Libere o acesso no cadeado ao lado do endereço.', 'err');
+  }
+}
+function stopVoice() {
+  detach('mic', true);
+  [...VO.out.values()].forEach(c => c.close()); VO.out.clear();
+  if (VO.on) { VO.on = false; toRoom({t: 'voice', on: false}); }
+}
+/* liga a voz para quem entrou e desliga de quem saiu */
+function syncVoice() {
+  if (!VO.on || !VO.dest || !peer || !myId) return;
+  const ids = new Set(lastList.map(u => u.id).filter(id => id !== myId));
+  VO.out.forEach((c, id) => { if (!ids.has(id)) { c.close(); VO.out.delete(id); } });
+  ids.forEach(id => {
+    if (VO.out.has(id)) return;
+    const c = peer.call(id, VO.dest.stream, {metadata: {kind: 'voice'}, sdpTransform: sd => sd.replace(/useinbandfec=1/g, 'useinbandfec=1;maxaveragebitrate=64000')});
+    if (!c) return;
+    VO.out.set(id, c);
+    c.on('close', () => { if (VO.out.get(id) === c) VO.out.delete(id); setTimeout(syncVoice, 2000); });
+  });
+}
+function onVoiceCall(c) {
+  const old = VO.inc.get(c.peer); if (old) { old.call.close(); old.el.remove(); }
+  const el = document.createElement('audio'); el.autoplay = true; el.hidden = true; document.body.append(el);
+  const v = {call: c, el, an: null, buf: null}; VO.inc.set(c.peer, v);
+  c.answer(undefined);
+  c.on('stream', s => {
+    el.srcObject = s; el.volume = S.vVoice / 100; el.muted = deaf; sinkOf(el); el.play().catch(() => {});
+    try { const ctx = mixCtx(), an = ctx.createAnalyser(); an.fftSize = 512; ctx.createMediaStreamSource(s).connect(an); v.an = an; v.buf = new Uint8Array(an.fftSize); } catch (e) {}
+  });
+  c.on('close', () => { if (VO.inc.get(c.peer) === v) VO.inc.delete(c.peer); el.remove(); });
+}
+const sinkOf = el => { if (el.setSinkId) el.setSinkId(S.outDev || '').catch(() => { if (S.outDev) { S.outDev = ''; save(); sync(); toast('A saída de áudio escolhida não está disponível. Voltei para a padrão.', 'info'); } }); };
+function applySinks() { sinkOf(vid); VO.inc.forEach(v => sinkOf(v.el)); }
+function paintDeaf() {
+  VO.inc.forEach(v => { v.el.muted = deaf; }); applyMute();
+  const b = $('#headB'); b.classList.toggle('deaf', deaf); b.querySelector('use').setAttribute('href', deaf ? '#i-deaf' : '#i-headset');
+  b.dataset.tip = deaf ? 'Ligar o som da sala' : 'Desligar o som da sala';
+}
+/* anel verde em quem está falando */
+const lvl = (an, buf) => { an.getByteTimeDomainData(buf); let s = 0; for (const x of buf) { const y = (x - 128) / 128; s += y * y; } return Math.sqrt(s / buf.length); };
+setInterval(() => {
+  const talking = new Set();
+  if (VO.on && MX.nodes.mic && lvl(MX.nodes.mic.an, MX.nodes.mic.buf) > .02) talking.add(myId);
+  VO.inc.forEach((v, id) => { if (v.an && !deaf && lvl(v.an, v.buf) > .02) talking.add(id); });
+  $$('.mem').forEach(r => r.querySelector('.av').classList.toggle('speak', talking.has(r.dataset.id)));
+  $$('#avs .av').forEach(a => a.classList.toggle('speak', talking.has(a.dataset.id)));
+}, 120);
+$('#outTest').onclick = () => {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)(), n = Math.round(ctx.sampleRate * .45), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) { const t = i / ctx.sampleRate, f = t < .15 ? 660 : t < .3 ? 880 : 990; d[i] = Math.sin(2 * Math.PI * f * t) * .25 * Math.min(1, (n - i) / 2000); }
+  const dst = ctx.createMediaStreamDestination(), src = ctx.createBufferSource(); src.buffer = b; src.connect(dst);
+  const el = new Audio(); el.srcObject = dst.stream; sinkOf(el); el.play().catch(() => {}); src.start();
+  setTimeout(() => { el.remove(); ctx.close(); }, 800);
+};
 
 /* ---------- Cineminha Áudio: programa do Windows que captura apps escolhidos ----------
    Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
@@ -498,15 +586,17 @@ function paintApps() {
   const head = document.createElement('p'); head.className = 'appnote';
   head.textContent = HP.apps.length ? 'Desmarque um app para o som dele ficar de fora. Você continua ouvindo normalmente.' : 'Nenhum app tocando som agora. Abra um programa com áudio e ele aparece aqui.';
   list.append(head);
+  if (S.mxScreen && S.mxApps) { const w = document.createElement('p'); w.className = 'warn2'; w.textContent = 'O Som da tela está ligado e leva o som do computador inteiro. Desligue-o para valer só os apps marcados.'; list.append(w); }
   if (HP.error) { const er = document.createElement('p'); er.className = 'apperr'; er.textContent = HP.error; list.append(er); }
   HP.apps.forEach(a => {
     const l = document.createElement('label'); l.className = 'app' + (a.active ? ' on' : ''); l.dataset.key = a.key;
     if (known.has(a.key)) l.style.animation = 'none';
-    l.innerHTML = '<input type="checkbox"><span class="box"><svg class="i"><use href="#i-check"/></svg></span>' + (a.icon ? '<img alt="">' : '<span class="ph2"></span>') + '<span class="nm"></span><span class="play" aria-hidden="true"><i></i><i></i><i></i></span>';
+    l.innerHTML = '<input type="checkbox"><span class="box"><svg class="i"><use href="#i-check"/></svg></span>' + (a.icon ? '<img alt="">' : '<span class="ph2"></span>') + '<span class="nmw"><span class="nm"></span><small class="inc" hidden></small></span><span class="play" aria-hidden="true"><i></i><i></i><i></i></span>';
     const cb = l.querySelector('input'), p = S.appPrefs[a.key];
     cb.checked = p ? p.on : a.on;
     if (a.icon) l.querySelector('img').src = a.icon; else l.querySelector('.ph2').textContent = (a.name[0] || '?').toUpperCase();
-    l.querySelector('.nm').textContent = a.name; l.title = a.name + (a.active ? ' (tocando agora)' : '');
+    l.querySelector('.nm').textContent = a.name;
+    if (a.includes && a.includes.length) { const inc = l.querySelector('.inc'); inc.hidden = false; inc.textContent = 'Leva junto: ' + a.includes.join(', '); } l.title = a.name + (a.active ? ' (tocando agora)' : '');
     cb.onchange = () => { S.appPrefs[a.key] = {on: cb.checked, vol: (p && p.vol) || 100}; save(); helperSend({t: 'set', key: a.key, on: cb.checked}); paintApps(); };
     list.append(l);
   });
@@ -566,14 +656,14 @@ function renderMembers() {
     const r = document.createElement('div'), mine = u.id === myId, can = u.live && !mine && u.id !== want;
     r.className = 'mem' + (can ? ' can' : '') + (u.live && u.id === want && !mine ? ' cur' : ''); r.dataset.id = u.id;
     if (known.has(u.id)) r.style.animation = 'none';
-    r.innerHTML = '<div class="av on"></div><div class="mi"><b></b><small></small></div>' + (can ? '<span class="watch">Assistir</span>' : '');
+    r.innerHTML = '<div class="av on"></div><div class="mi"><b></b><small></small></div>' + (can ? '<span class="watch">Assistir</span>' : u.mic ? '<svg class="i vmic"><use href="#i-mic"/></svg>' : '');
     avatar(r.querySelector('.av'), u.name); r.querySelector('b').textContent = u.name + (mine ? ' (você)' : '');
     const sm = r.querySelector('small');
     sm.textContent = u.live ? (mine ? 'Transmitindo agora' : u.id === want ? 'Você está assistindo' : 'Transmitindo agora') : u.host ? 'Anfitrião' : 'Na sala';
     sm.classList.toggle('live', !!u.live);
     if (can) { r.tabIndex = 0; r.setAttribute('role', 'button'); r.setAttribute('aria-label', 'Assistir a tela de ' + u.name); r.onclick = () => { nav(false); watch(u.id); }; r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); r.click(); } }; }
     el.append(r);
-    if (av.children.length < 5) { const a = document.createElement('div'); a.className = 'av on' + (u.live ? ' talk' : ''); avatar(a, u.name); a.title = u.name; av.append(a); }
+    if (av.children.length < 5) { const a = document.createElement('div'); a.className = 'av on' + (u.live ? ' talk' : ''); avatar(a, u.name); a.title = u.name; a.dataset.id = u.id; av.append(a); }
     if (u.host) {
       const ri = $('#roomIcon'); if (u.av) pic(ri, u.av); else { ri.style.background = ''; ri.textContent = (u.name[0] || '?').toUpperCase(); }
       const t = 'Sala de ' + u.name; $('#roomName').textContent = $('#roomT').textContent = t; document.title = t + ' · Cineminha';
@@ -614,7 +704,7 @@ function render() {
     if (vid.srcObject !== preview) vid.srcObject = preview;
     applyMute(); play(); showVideo(true); $('#sound').hidden = true;
   } else if (want && inStream) {
-    if (vid.srcObject !== inStream) { vid.srcObject = inStream; $('#sound').hidden = !wantMuted; }
+    if (vid.srcObject !== inStream) { vid.srcObject = inStream; $('#sound').hidden = !wantMuted; sinkOf(vid); }
     applyMute(); play(); showVideo(true);
   } else {
     vid.srcObject = null; $('#sound').hidden = true; showVideo(false);
@@ -647,6 +737,7 @@ function reconcile() {
   render();
 }
 function onCall(c) {
+  if (c.metadata && c.metadata.kind === 'voice') return onVoiceCall(c);
   if (c.peer !== want) { c.close(); return; }
   if (inCall && inCall !== c) { const o = inCall; inCall = null; o.close(); }
   inCall = c; last = {};
@@ -715,9 +806,11 @@ function onMsg(d) {
   if (d.t === 'full') { full = true; setStatus('Sala cheia', 'Já há ' + d.max + (d.max > 1 ? ' convidados.' : ' convidado.') + ' Peça ao anfitrião para liberar mais vagas.'); }
   else if (d.t === 'msg' || d.t === 'sys') addMsg(d);
   else if (d.t === 'users') {
+    const firstReady = !roomReady;
     lastList = Array.isArray(d.list) ? d.list : []; roomReady = true;
+    if (firstReady && S.mxMic && !VO.on) voiceMic();
     const ids = new Set(lastList.map(u => u.id)); [...outCalls.keys()].forEach(id => { if (!ids.has(id)) closeOut(id); });
-    renderMembers(); reconcile();
+    renderMembers(); reconcile(); syncVoice();
   }
   else if (d.t === 'watchreq') sendStream(d.from);
   else if (d.t === 'unwatchreq') closeOut(d.from);
@@ -729,8 +822,8 @@ const deliver = (id, m) => { if (id === myId) return onMsg(m); const g = guests.
 function post(m) { m.t = 'msg'; addMsg(m); bcast(m); }
 function sys(text) { const m = {t: 'sys', text}; addMsg(m); bcast(m); }
 function users() {
-  const list = [{id: myId, name: me, host: true, av: myAv, live: !!stream}];
-  guests.forEach((g, id) => g.name && list.push({id, name: g.name, av: g.av, live: !!g.live}));
+  const list = [{id: myId, name: me, host: true, av: myAv, live: !!stream, mic: VO.on}];
+  guests.forEach((g, id) => g.name && list.push({id, name: g.name, av: g.av, live: !!g.live, mic: !!g.mic}));
   bcast({t: 'users', list}); onMsg({t: 'users', list});
 }
 function onRoom(from, d) {
@@ -738,10 +831,11 @@ function onRoom(from, d) {
   if (!d || (from !== myId && !g)) return;
   const name = g ? g.name || 'Convidado' : me;
   if (d.t === 'hello' && g) {
-    const fresh = !g.name; g.name = clean(d.name) || 'Convidado'; g.av = okAv(d.av); g.live = !!d.live;
+    const fresh = !g.name; g.name = clean(d.name) || 'Convidado'; g.av = okAv(d.av); g.live = !!d.live; g.mic = !!d.mic;
     if (fresh) sys(g.name + ' entrou na sala'); users();
   }
   else if (d.t === 'profile') { if (g) g.av = okAv(d.av); users(); }
+  else if (d.t === 'voice') { if (g) g.mic = !!d.on; users(); }
   else if (d.t === 'msg') { const text = String(d.text || '').trim().slice(0, 500); if (text) post({name, text, ts: Date.now(), host: !g}); }
   else if (d.t === 'live') { const on = !!d.on; if (g) { if (g.live === on) return; g.live = on; } sys(name + (on ? ' começou a transmitir' : ' parou de transmitir')); users(); }
   else if (d.t === 'watch' && typeof d.to === 'string') deliver(d.to, {t: 'watchreq', from});
@@ -801,7 +895,7 @@ function connect() {
   if (hostConn && hostConn.open) return;
   const c = peer.connect(target, {reliable: true}); hostConn = c;
   if (!c) return retry(3000);
-  c.on('open', () => { if (hostConn !== c) return; c.send({t: 'hello', name: me, av: myAv, live: !!stream}); setStatus('Conectado', 'Carregando a sala…'); });
+  c.on('open', () => { if (hostConn !== c) return; c.send({t: 'hello', name: me, av: myAv, live: !!stream, mic: VO.on}); setStatus('Conectado', 'Carregando a sala…'); });
   c.on('data', d => { if (hostConn === c) onMsg(d); });
   c.on('close', () => {
     if (hostConn !== c || full) return;
@@ -829,7 +923,7 @@ async function start() {
   attach('screen', hasAudio ? new MediaStream(disp.getAudioTracks()) : null);
   preview = new MediaStream([vt]);
   stream = new MediaStream([vt, MX.dest.stream.getAudioTracks()[0]]);
-  await Promise.all([openInput('mic'), openInput('extra')]);
+  await openInput('extra');
   if (HP.ok) { try { await helperNode(); } catch (e) {} }
   helperStream();
   $('#hint').classList.toggle('warn', !hasAudio && !S.mxMic && !S.mxExtra && !(HP.ok && S.mxApps));
@@ -842,7 +936,7 @@ async function start() {
 function stop() {
   if (!stream) return;
   disp.getTracks().forEach(t => { t.onended = null; t.stop(); });
-  ['screen', 'mic', 'extra'].forEach(k => detach(k, k !== 'screen'));
+  ['screen', 'extra'].forEach(k => detach(k, k !== 'screen'));
   stream = null; helperStream(); disp = null; preview = null; paused = false;
   $$('[data-act=pause] use').forEach(u => u.setAttribute('href', '#i-pause'));
   $$('[data-act=pause]').forEach(b => { b.dataset.tip = 'Pausar imagem'; b.classList.remove('on'); });
@@ -937,6 +1031,7 @@ $('#nf').onsubmit = e => {
   paintMe(); $('#meName').textContent = me; $('#meRole').textContent = isHost ? 'Anfitrião' : 'Convidado';
   $('#modal').classList.add('out'); setTimeout(() => $('#modal').remove(), 220);
   addMsg({t: 'sys', text: 'Você entrou como ' + me});
+  mixCtx();
   isHost ? initHost() : initViewer();
 };
 addEventListener('resize', moveInd);
