@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tela ao vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--rail:#1E1F22;--side:#2B2D31;--main:#313338;--input:#383A40;--text:#DBDEE1;--head:#F2F3F5;--muted:#949BA4;--blurple:#5865F2;--green:#23A55A;--red:#F23F43;--line:#1E1F22;--ease:cubic-bezier(.2,.8,.2,1)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{display:grid;grid-template-columns:72px 240px 1fr;overflow:hidden;background:var(--main);color:var(--text);font:15px/1.4 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+[hidden]{display:none!important}
+button,input,select{font:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #00A8FC;outline-offset:2px}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:#1A1B1E;border-radius:4px}
+
+/* Barra de servidores */
+.rail{background:var(--rail);display:flex;flex-direction:column;align-items:center;padding-top:12px;position:relative}
+.srv{width:48px;height:48px;border:0;border-radius:16px;background:var(--blurple);color:#fff;display:grid;place-items:center;cursor:pointer;transition:border-radius .2s var(--ease),transform .15s}
+.srv:hover{border-radius:14px}.srv:active{transform:translateY(1px)}
+.pill{position:absolute;left:0;top:20px;width:4px;height:40px;background:#fff;border-radius:0 4px 4px 0;animation:grow .5s var(--ease) .1s both}
+@keyframes grow{from{height:0;opacity:0}}
+
+/* Canais */
+.side{background:var(--side);display:flex;flex-direction:column;min-height:0}
+.shead{height:48px;padding:0 16px;display:flex;align-items:center;font-weight:600;color:var(--head);box-shadow:0 1px 0 rgba(0,0,0,.3)}
+.chs{flex:1;overflow:auto;padding:12px 8px}
+.cat{font-size:12px;font-weight:600;color:var(--muted);padding:12px 8px 4px}
+.ch{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;color:var(--muted);font-weight:500}
+.ch.act{background:#404249;color:var(--head)}
+.ch .h{font-size:20px;line-height:1;width:20px;text-align:center}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);margin:0 6px}
+.live .dot{background:var(--red);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35;transform:scale(.8)}}
+.mem{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:4px;animation:in .25s var(--ease)}
+.mem:hover{background:#35373C}
+.mem b{font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.av{position:relative;flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-weight:600;color:#fff;font-size:14px}
+.av.on::after{content:"";position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--side)}
+.user{height:52px;background:#232428;display:flex;align-items:center;gap:10px;padding:0 8px}
+.user b{display:block;font-size:14px;color:var(--head);line-height:1.1}
+.user small{color:var(--muted);font-size:12px}
+
+/* Área principal */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.top{height:48px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;font-weight:600;color:var(--head);box-shadow:0 1px 0 rgba(0,0,0,.3)}
+.top .h{color:var(--muted);font-size:22px;font-weight:400}
+.sp{flex:1}
+.top small{font-weight:500;color:var(--muted);font-size:13px}
+.badge{font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;background:#4E5058;color:#fff;transition:background .3s}
+.badge.on{background:var(--red)}
+.body{flex:1;display:flex;min-height:0}
+.center{flex:1;min-width:0;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.stage{position:relative;width:100%;aspect-ratio:16/9;max-height:calc(100vh - 200px);margin:0 auto;background:#000;border-radius:8px;overflow:hidden;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+.stage video{width:100%;height:100%;object-fit:contain;display:block;animation:fade .4s}
+@keyframes fade{from{opacity:0}}
+.ph{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:8px;text-align:center;padding:24px;background:#1A1B1E}
+.ph svg{color:#4E5058;animation:float 3.2s ease-in-out infinite}
+@keyframes float{50%{transform:translateY(-6px)}}
+.ph strong{font-size:20px;color:var(--head)}.ph span{color:var(--muted);max-width:360px}
+.chip{position:absolute;left:12px;top:12px;font-size:12px;font-weight:600;padding:4px 8px;border-radius:4px;background:rgba(0,0,0,.7);color:#fff;font-variant-numeric:tabular-nums}
+.chip:empty{display:none}
+.sound{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:0;border-radius:4px;padding:12px 24px;font-weight:600;background:var(--blurple);color:#fff;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:pop .35s var(--ease)}
+.sound:hover{background:#4752C4}
+.bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:12px;padding:12px 16px;background:linear-gradient(transparent,rgba(0,0,0,.75));opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s var(--ease)}
+.stage:hover .bar,.bar:focus-within{opacity:1;transform:none}
+.bar input{width:110px;accent-color:#fff}
+.ibtn{background:none;border:0;color:#fff;cursor:pointer;padding:6px 10px;border-radius:4px;font-size:13px;font-weight:500}.ibtn:hover{background:rgba(255,255,255,.15)}
+
+/* Controles do anfitrião */
+.ctl{background:var(--side);border-radius:8px;padding:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.ctl select,.ctl input{height:36px;padding:0 10px;border:0;border-radius:4px;background:#1E1F22;color:var(--text)}
+.ctl input{flex:1;min-width:180px}
+.btn{height:36px;padding:0 16px;border:0;border-radius:4px;background:#4E5058;color:#fff;font-weight:500;cursor:pointer;transition:background .15s,transform .1s}
+.btn:hover{background:#6D6F78}.btn:active{transform:scale(.97)}
+.btn.go{background:var(--green)}.btn.go:hover{background:#1A8A48}
+.btn.go.stop{background:var(--red)}.btn.go.stop:hover{background:#C93538}
+.hint{width:100%;font-size:12.5px;color:var(--muted)}
+body.viewer .ctl{display:none}
+
+/* Chat */
+.chat{width:340px;flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--line)}
+.msgs{flex:1;overflow-y:auto;padding:12px 0}
+.msg{display:flex;gap:12px;padding:4px 16px;animation:in .25s var(--ease)}
+.msg:hover{background:rgba(2,2,2,.06)}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+.mh{display:flex;align-items:baseline;gap:8px}
+.mh b{font-weight:600}
+.mh time{font-size:11px;color:var(--muted)}
+.tag{font-style:normal;font-size:10px;font-weight:700;background:var(--blurple);color:#fff;padding:1px 5px;border-radius:3px}
+.msg p{margin:0;word-break:break-word;white-space:pre-wrap}
+.sys{padding:6px 16px;font-size:13px;color:var(--muted);animation:in .25s var(--ease)}
+.in{padding:0 16px 16px}
+.in input{width:100%;height:44px;border:0;border-radius:8px;padding:0 16px;background:var(--input);color:var(--text)}
+.in input::placeholder{color:var(--muted)}
+
+/* Janela de apelido */
+.modal{position:fixed;inset:0;z-index:9;display:grid;place-items:center;background:rgba(0,0,0,.7);animation:fade .25s}
+.modal.out{opacity:0;transition:opacity .2s;pointer-events:none}
+.card{width:min(440px,92vw);background:var(--main);border-radius:8px;padding:24px;display:grid;gap:12px;box-shadow:0 12px 48px rgba(0,0,0,.6);animation:pop .4s var(--ease)}
+@keyframes pop{from{opacity:0;transform:scale(.92)}}
+.modal .card{animation-name:popc}
+@keyframes popc{from{opacity:0;transform:scale(.92)}}
+.card h2{margin:0;color:var(--head);font-size:22px}.card p{margin:0;color:var(--muted)}
+.card input{height:42px;padding:0 12px;border:0;border-radius:4px;background:#1E1F22;color:var(--text)}
+.card .btn{height:44px;background:var(--blurple)}.card .btn:hover{background:#4752C4}
+
+@media (max-width:900px){
+ body{grid-template-columns:1fr}.rail,.side{display:none}
+ .body{flex-direction:column;overflow:auto}.center{overflow:visible;flex:none}
+ .chat{width:auto;height:420px;border-left:0;border-top:1px solid var(--line)}
+ .stage{max-height:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<nav class="rail"><div class="pill"></div>
+ <button class="srv" title="Tela ao vivo" aria-label="Tela ao vivo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+</nav>
+
+<aside class="side">
+ <div class="shead">Tela ao vivo</div>
+ <div class="chs">
+  <div class="cat">Canais</div>
+  <div class="ch act"><span class="h">#</span>chat</div>
+  <div class="ch" id="chLive"><span class="dot"></span>transmissão</div>
+  <div class="cat" id="memTitle">Online</div>
+  <div id="members"></div>
+ </div>
+ <div class="user"><div class="av on" id="meAv"></div><div><b id="meName"></b><small id="meRole"></small></div></div>
+</aside>
+
+<main class="main">
+ <div class="top"><span class="h">#</span>transmissão<span class="badge" id="badge">OFFLINE</span><span class="sp"></span><small id="count"></small></div>
+ <div class="body">
+  <div class="center">
+   <section class="stage" id="stage">
+    <video id="v" autoplay playsinline muted></video>
+    <div class="ph" id="ph">
+     <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+     <strong id="phText">Pronto para transmitir</strong><span id="phSub"></span>
+    </div>
+    <div class="chip" id="res"></div>
+    <button class="sound" id="sound" hidden>Ativar som</button>
+    <div class="bar" id="bar" hidden>
+     <span>Volume</span><input type="range" id="vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+     <span class="sp"></span><button class="ibtn" id="fs">Tela cheia</button>
+    </div>
+   </section>
+   <section class="ctl">
+    <select id="q" aria-label="Qualidade">
+     <option value="0">1080p · 60 fps · 8 Mbps</option>
+     <option value="1">1080p · 30 fps · 5 Mbps</option>
+     <option value="2">720p · 60 fps · 4 Mbps</option>
+    </select>
+    <button class="btn go" id="go">Iniciar transmissão</button>
+    <input type="text" id="link" readonly value="Gerando link…" aria-label="Link para assistir">
+    <button class="btn" id="copy">Copiar link</button>
+    <div class="hint" id="hint">Mantenha esta aba aberta durante a transmissão.</div>
+   </section>
+  </div>
+  <aside class="chat">
+   <div class="msgs" id="msgs"></div>
+   <form class="in" id="f"><input id="mi" placeholder="Conversar em #chat" maxlength="500" autocomplete="off" aria-label="Mensagem"></form>
+  </aside>
+ </div>
+</main>
+
+<div class="modal" id="modal">
+ <form class="card" id="nf">
+  <h2>Bem-vindo</h2><p>Escolha um apelido para entrar no chat e na transmissão.</p>
+  <input id="ni" maxlength="20" required autofocus placeholder="Seu apelido" autocomplete="off" aria-label="Apelido">
+  <button class="btn">Entrar</button>
+ </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const vid = $('#v'), badge = $('#badge');
+const target = new URLSearchParams(location.search).get('v');
+document.body.className = target ? 'viewer' : 'host';
+const ICE = {iceServers: [
+  {urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'},
+  {urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject'}
+]};
+const PRESETS = [{w:1920,h:1080,fps:60,br:8e6},{w:1920,h:1080,fps:30,br:5e6},{w:1280,h:720,fps:60,br:4e6}];
+const MAX = 2;
+let peer, stream, preset = PRESETS[0], call, hostConn, me = '', full = false, last = {b:0,t:0};
+const viewers = new Map();
+const clean = s => String(s || '').trim().slice(0, 20);
+const hue = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+function avatar(el, n) { el.textContent = (n[0] || '?').toUpperCase(); el.style.background = 'hsl(' + hue(n) + ',50%,42%)'; }
+
+/* ---------- Chat ---------- */
+function addMsg(m) {
+  const box = $('#msgs'), d = document.createElement('div');
+  if (m.t === 'sys') { d.className = 'sys'; d.textContent = m.text; }
+  else {
+    d.className = 'msg';
+    d.innerHTML = '<div class="av"></div><div><div class="mh"><b></b><i class="tag" hidden>Anfitrião</i><time></time></div><p></p></div>';
+    avatar(d.querySelector('.av'), m.name);
+    const b = d.querySelector('b'); b.textContent = m.name; b.style.color = 'hsl(' + hue(m.name) + ',70%,72%)';
+    d.querySelector('.tag').hidden = !m.host;
+    d.querySelector('time').textContent = new Date(m.ts).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+    d.querySelector('p').textContent = m.text;
+  }
+  box.append(d);
+  while (box.children.length > 200) box.firstChild.remove();
+  box.scrollTop = box.scrollHeight;
+}
+function renderMembers(list) {
+  const el = $('#members'); el.textContent = '';
+  list.forEach(u => {
+    const r = document.createElement('div'); r.className = 'mem';
+    r.innerHTML = '<div class="av on"></div><b></b>' + (u.host ? '<i class="tag">Anfitrião</i>' : '');
+    avatar(r.querySelector('.av'), u.name); r.querySelector('b').textContent = u.name;
+    el.append(r);
+  });
+  $('#memTitle').textContent = 'Online — ' + list.length;
+}
+const bcast = m => viewers.forEach(v => v.conn.open && v.conn.send(m));
+function post(m) { m.t = 'msg'; addMsg(m); bcast(m); }
+function sys(text) { const m = {t: 'sys', text}; addMsg(m); bcast(m); }
+function users() {
+  const list = [{name: me, host: true}];
+  viewers.forEach(v => v.name && list.push({name: v.name}));
+  renderMembers(list); bcast({t: 'users', list});
+  $('#count').textContent = viewers.size + ' de ' + MAX + ' espectadores';
+}
+$('#f').onsubmit = e => {
+  e.preventDefault();
+  const text = $('#mi').value.trim(); if (!text) return;
+  $('#mi').value = '';
+  if (!target) post({name: me, text, ts: Date.now(), host: true});
+  else if (hostConn && hostConn.open) hostConn.send({t: 'msg', text});
+  else addMsg({t: 'sys', text: 'Sem conexão com o anfitrião. Sua mensagem não foi enviada.'});
+};
+
+function setStatus(text, live, sub) {
+  $('#ph').hidden = !!live;
+  $('#phText').textContent = text || ''; $('#phSub').textContent = sub || '';
+  badge.textContent = live ? 'AO VIVO' : 'OFFLINE';
+  badge.classList.toggle('on', !!live);
+  $('#chLive').classList.toggle('live', !!live);
+}
+
+/* ---------- Anfitrião ---------- */
+function initHost() {
+  let id; try { id = localStorage.getItem('tl-id'); } catch (e) {}
+  if (!id) { id = 'tl' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('tl-id', id); } catch (e) {} }
+  peer = new Peer(id, {config: ICE});
+  peer.on('open', () => { $('#link').value = location.href.split(/[?#]/)[0] + '?v=' + id; });
+  peer.on('disconnected', () => peer.reconnect());
+  peer.on('error', e => {
+    if (e.type === 'unavailable-id') { try { localStorage.removeItem('tl-id'); } catch (_) {} location.reload(); }
+    else $('#hint').textContent = 'Erro de conexão (' + e.type + '). Recarregue a página.';
+  });
+  peer.on('connection', conn => {
+    conn.on('open', () => {
+      if (!viewers.has(conn.peer) && viewers.size >= MAX) { conn.send({t: 'full'}); setTimeout(() => conn.close(), 500); return; }
+      viewers.set(conn.peer, {conn, name: ''});
+      if (stream) callViewer(conn.peer);
+      users();
+    });
+    conn.on('data', d => {
+      const v = viewers.get(conn.peer); if (!v || !d) return;
+      if (d.t === 'hello') { v.name = clean(d.name) || 'Convidado'; sys(v.name + ' entrou.'); users(); }
+      else if (d.t === 'msg') { const text = String(d.text || '').trim().slice(0, 500); if (text) post({name: v.name, text, ts: Date.now()}); }
+    });
+    conn.on('close', () => {
+      const v = viewers.get(conn.peer);
+      if (v && v.conn === conn) { if (v.call) v.call.close(); viewers.delete(conn.peer); if (v.name) sys(v.name + ' saiu.'); users(); }
+    });
+  });
+  renderMembers([{name: me, host: true}]);
+  $('#count').textContent = '0 de ' + MAX + ' espectadores';
+  setStatus('Pronto para transmitir', false, 'Escolha a qualidade e clique em iniciar. Envie o link para quem vai assistir.');
+}
+
+async function start() {
+  preset = PRESETS[+$('#q').value];
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {width: {ideal: preset.w}, height: {ideal: preset.h}, frameRate: {ideal: preset.fps}},
+      audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2}
+    });
+  } catch (e) { $('#hint').textContent = 'Compartilhamento cancelado ou bloqueado pelo navegador.'; return; }
+  const vt = stream.getVideoTracks()[0];
+  vt.contentHint = 'motion'; vt.onended = stop;
+  vid.srcObject = stream; vid.muted = true; vid.play();
+  const s = vt.getSettings();
+  $('#res').textContent = s.width + '×' + s.height + ' · ' + Math.round(s.frameRate) + ' fps';
+  $('#hint').textContent = stream.getAudioTracks().length ? 'Áudio incluído na transmissão.' : 'Sem áudio: ao escolher a tela, marque “Compartilhar áudio do sistema” (Chrome ou Edge).';
+  setStatus('', true);
+  $('#go').textContent = 'Parar transmissão'; $('#go').classList.add('stop'); $('#q').disabled = true;
+  viewers.forEach((_, id) => callViewer(id));
+}
+function stop() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; vid.srcObject = null;
+  viewers.forEach(v => v.call && v.call.close());
+  $('#res').textContent = '';
+  $('#go').textContent = 'Iniciar transmissão'; $('#go').classList.remove('stop'); $('#q').disabled = false;
+  setStatus('Transmissão encerrada', false, 'Clique em iniciar para transmitir de novo.');
+}
+function callViewer(id) {
+  const v = viewers.get(id); if (!v || !stream) return;
+  const c = peer.call(id, stream, {sdpTransform: s => s.replace(/useinbandfec=1/g, 'useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=192000')});
+  v.call = c;
+  [800, 3000].forEach(t => setTimeout(() => tune(c), t));
+}
+function tune(c) {
+  const pc = c.peerConnection; if (!pc) return;
+  pc.getSenders().forEach(async s => {
+    if (!s.track) return;
+    const p = s.getParameters(); if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+    if (s.track.kind === 'video') { p.encodings[0].maxBitrate = preset.br; p.encodings[0].maxFramerate = preset.fps; p.degradationPreference = 'maintain-framerate'; }
+    else p.encodings[0].maxBitrate = 192e3;
+    try { await s.setParameters(p); } catch (e) {}
+  });
+}
+
+/* ---------- Espectador ---------- */
+function initViewer() {
+  $('#bar').hidden = false;
+  setStatus('Conectando…', false);
+  peer = new Peer({config: ICE});
+  peer.on('open', connect);
+  peer.on('disconnected', () => peer.reconnect());
+  peer.on('call', c => {
+    call = c; last = {b: 0, t: 0}; c.answer();
+    c.on('stream', s => {
+      vid.srcObject = s; vid.muted = true; vid.play().catch(() => {});
+      setStatus('', true); $('#sound').hidden = false;
+      c.peerConnection.getReceivers().forEach(r => { try { r.playoutDelayHint = 0; } catch (e) {} });
+    });
+    c.on('close', () => {
+      vid.srcObject = null; $('#sound').hidden = true; $('#res').textContent = '';
+      setStatus('A transmissão terminou', false, 'A imagem volta sozinha quando ela recomeçar.');
+    });
+  });
+  peer.on('error', e => {
+    if (e.type === 'peer-unavailable') { setStatus('Aguardando o anfitrião', false, 'A página dele ainda não está aberta. Tentando de novo…'); setTimeout(connect, 3000); }
+  });
+}
+function connect() {
+  if (full) return;
+  const c = peer.connect(target, {reliable: true});
+  hostConn = c;
+  c.on('open', () => {
+    c.send({t: 'hello', name: me});
+    if (!vid.srcObject) setStatus('Conectado', false, 'Aguardando a transmissão começar.');
+  });
+  c.on('data', d => {
+    if (!d) return;
+    if (d.t === 'full') { full = true; setStatus('Sala cheia', false, 'Já há ' + MAX + ' pessoas assistindo.'); }
+    else if (d.t === 'msg' || d.t === 'sys') addMsg(d);
+    else if (d.t === 'users') renderMembers(d.list);
+  });
+  c.on('close', () => { if (!full) { setStatus('Conexão perdida', false, 'Reconectando…'); setTimeout(connect, 2000); } });
+}
+$('#sound').onclick = () => { vid.muted = false; vid.play(); $('#sound').hidden = true; };
+$('#vol').oninput = e => { vid.volume = e.target.value; vid.muted = false; };
+$('#fs').onclick = () => document.fullscreenElement ? document.exitFullscreen() : $('#stage').requestFullscreen();
+setInterval(async () => {
+  if (!target || !call || !call.peerConnection || !vid.srcObject) return;
+  (await call.peerConnection.getStats()).forEach(x => {
+    if (x.type === 'inbound-rtp' && x.kind === 'video') {
+      const mbps = last.t ? (x.bytesReceived - last.b) * 8 / ((x.timestamp - last.t) / 1000) / 1e6 : 0;
+      last = {b: x.bytesReceived, t: x.timestamp};
+      $('#res').textContent = (x.frameWidth || '?') + '×' + (x.frameHeight || '?') + ' · ' + Math.round(x.framesPerSecond || 0) + ' fps · ' + mbps.toFixed(1) + ' Mbps';
+    }
+  });
+}, 1000);
+
+/* ---------- Início ---------- */
+$('#go').onclick = () => stream ? stop() : start();
+$('#copy').onclick = async () => {
+  const el = $('#link');
+  try { await navigator.clipboard.writeText(el.value); } catch (e) { el.select(); document.execCommand('copy'); }
+  $('#copy').textContent = 'Link copiado';
+  setTimeout(() => $('#copy').textContent = 'Copiar link', 1800);
+};
+try { $('#ni').value = localStorage.getItem('tl-name') || ''; } catch (e) {}
+$('#nf').onsubmit = e => {
+  e.preventDefault();
+  me = clean($('#ni').value); if (!me) return;
+  try { localStorage.setItem('tl-name', me); } catch (_) {}
+  avatar($('#meAv'), me); $('#meName').textContent = me; $('#meRole').textContent = target ? 'Espectador' : 'Anfitrião';
+  $('#modal').classList.add('out'); setTimeout(() => $('#modal').remove(), 250);
+  addMsg({t: 'sys', text: 'Bem-vindo ao chat, ' + me + '.'});
+  if (!target && !(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)) $('#hint').textContent = 'Este navegador não permite compartilhar a tela. Use Chrome ou Edge no computador.';
+  target ? initViewer() : initHost();
+};
+</script>
+</body>
+</html>
