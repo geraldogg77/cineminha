@@ -6,11 +6,21 @@ Transmita sua tela para até 4 amigos direto do navegador, com áudio e chat ao 
 
 ## Como usar
 
-1. Abra o site, escolha um apelido e clique em **Criar minha sala**.
-2. Clique em **Iniciar transmissão** e escolha a tela, janela ou aba. Para levar o som, marque a opção de compartilhar áudio.
-3. Copie o convite e envie. Quem abrir o link entra como espectador.
+1. Abra o site, escolha um apelido e clique em **Criar minha sala**. Quem cria a sala é o anfitrião: a aba dele precisa ficar aberta para a sala funcionar.
+2. Copie o link e envie. Quem abrir o link entra na sala.
+3. Qualquer pessoa pode clicar em **Transmitir minha tela**. Várias pessoas podem transmitir ao mesmo tempo, e cada uma escolhe qual tela assistir pelas abas acima do vídeo ou pela lista de pessoas.
 
-Mantenha a aba do anfitrião aberta durante a transmissão. Funciona melhor no Chrome ou Edge no computador.
+Funciona melhor no Chrome ou Edge no computador. Quem assiste pode usar qualquer navegador, inclusive no celular.
+
+## Áudio da transmissão
+
+No mixer (botão de controles deslizantes ou **Configurações → Transmissão**), cada fonte tem liga/desliga, volume e medidor:
+
+- **Som da tela**: o áudio que o navegador captura junto com a tela ou aba. Para levar o som, marque a opção de compartilhar áudio na janela de escolha da tela.
+- **Microfone**: sua voz para quem assiste sua tela. Também liga e desliga pelo botão de microfone ou pela tecla V.
+- **Entrada extra**: qualquer dispositivo de entrada de áudio, como um cabo virtual.
+
+O navegador não consegue separar o som de cada programa. Para transmitir só alguns apps, instale o VB-CABLE (gratuito), mande a saída desses apps para **CABLE Input** no Mixer de volume do Windows e escolha **CABLE Output** na entrada extra. O passo a passo completo está dentro do mixer.
 
 ## Atalhos
 
@@ -20,8 +30,9 @@ Mantenha a aba do anfitrião aberta durante a transmissão. Funciona melhor no C
 | T | Modo cinema |
 | C | Mostrar ou ocultar o chat |
 | S | Estatísticas da conexão |
-| M | Som (espectador) |
-| P | Pausar a imagem (anfitrião) |
+| M | Som de quem você assiste |
+| V | Ligar ou desligar seu microfone |
+| P | Pausar sua imagem |
 
 ## Servidor TURN (Cloudflare)
 
