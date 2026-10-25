@@ -60,9 +60,17 @@ struct State {
     version: usize,
     error: Option<String>,
     tree: HashMap<u32, HashSet<u32>>,
+    gains: HashMap<u32, f32>,                 // quem entra na mistura agora e com que volume; o resto fica mudo
+    stopping: Vec<(u32, Arc<AtomicBool>)>,    // capturas que mandei fechar e ainda não terminaram
 }
 
-struct Cap { stop: Arc<AtomicBool>, buf: Arc<Mutex<VecDeque<f32>>>, primed: bool }
+/// `alive` vira falso quando a thread da captura termina (por erro ou porque mandei parar);
+/// `off_since` marca desde quando o app está desmarcado, para a captura sobreviver a um clique sem querer.
+struct Cap { stop: Arc<AtomicBool>, buf: Arc<Mutex<VecDeque<f32>>>, primed: bool, alive: Arc<AtomicBool>, off_since: Option<Instant> }
+
+/// Quanto tempo a captura de um app desmarcado continua aberta (em silêncio) antes de fechar.
+/// Marcar de novo dentro desse prazo volta na hora, sem recriar a captura.
+const GRACE: Duration = Duration::from_secs(20);
 
 type Shared = Arc<Mutex<State>>;
 static CONNECTED: AtomicUsize = AtomicUsize::new(0);
@@ -274,12 +282,16 @@ fn broadcast_text(st: &mut State, text: String) {
 fn start_capture(pid: u32, shared: Shared) -> Cap {
     let stop = Arc::new(AtomicBool::new(false));
     let buf = Arc::new(Mutex::new(VecDeque::with_capacity(RATE * CH / 5)));
-    let (s2, b2) = (stop.clone(), buf.clone());
+    let alive = Arc::new(AtomicBool::new(true));
+    let (s2, b2, a2) = (stop.clone(), buf.clone(), alive.clone());
     thread::spawn(move || {
-        if let Err(e) = capture_loop(pid, &s2, &b2) {
+        let res = capture_loop(pid, &s2, &b2);
+        a2.store(false, Ordering::Relaxed);
+        if let (Err(e), false) = (res, s2.load(Ordering::Relaxed)) {
             let msg = format!("{e}");
             let mut st = shared.lock().unwrap();
-            if st.error.is_none() {
+            // só avisa se o app ainda estava na mistura: um app que fechou sozinho não é erro
+            if st.error.is_none() && st.gains.contains_key(&pid) {
                 st.error = Some(if msg.contains("0x80070490") || msg.contains("Activate") {
                     "Este Windows não permite capturar o som de um app separado. Atualize para o Windows 11 ou para a versão mais recente do Windows 10.".into()
                 } else { format!("Não foi possível capturar um app: {msg}") });
@@ -287,7 +299,7 @@ fn start_capture(pid: u32, shared: Shared) -> Cap {
             }
         }
     });
-    Cap { stop, buf, primed: false }
+    Cap { stop, buf, primed: false, alive, off_since: None }
 }
 
 fn capture_loop(pid: u32, stop: &AtomicBool, buf: &Mutex<VecDeque<f32>>) -> Result<(), Box<dyn std::error::Error>> {
@@ -319,9 +331,15 @@ fn capture_loop(pid: u32, stop: &AtomicBool, buf: &Mutex<VecDeque<f32>>) -> Resu
     Ok(())
 }
 
-/// Liga e desliga capturas conforme o que o site pediu
+/// Liga e desliga capturas conforme o que o site pediu.
+/// Regras que deixam a separação por app estável:
+///  - o volume de quem entra na mistura é decidido aqui (`gains`); desmarcar silencia na hora;
+///  - a captura de um app desmarcado só fecha depois de GRACE, então marcar e desmarcar não recria nada;
+///  - uma captura que caiu (thread terminou) é refeita na próxima passada;
+///  - nunca abre uma captura nova do mesmo app enquanto a anterior ainda está fechando.
 fn manage_captures(shared: &Shared) {
-    let mut st = shared.lock().unwrap();
+    let mut guard = shared.lock().unwrap();
+    let st = &mut *guard;
     let streaming = st.clients.iter().any(|c| c.streaming.load(Ordering::Relaxed));
     let mut want: HashSet<u32> = HashSet::new();
     if streaming {
@@ -330,9 +348,39 @@ fn manage_captures(shared: &Shared) {
         let covered: HashSet<u32> = want.iter().filter(|p| want.iter().any(|o| o != *p && st.tree.get(o).map_or(false, |d| d.contains(p)))).copied().collect();
         want.retain(|p| !covered.contains(p));
     }
+    let mut gains: HashMap<u32, f32> = HashMap::new();
+    for a in &st.apps {
+        let (on, vol) = pref_of(&st.prefs, &a.key);
+        if on { for r in &a.roots { if want.contains(r) { gains.insert(*r, vol); } } }
+    }
+    st.gains = gains;
+
+    let now = Instant::now();
     let running: Vec<u32> = st.caps.keys().copied().collect();
-    for pid in running { if !want.contains(&pid) { if let Some(c) = st.caps.remove(&pid) { c.stop.store(true, Ordering::Relaxed); } } }
-    for pid in want { if !st.caps.contains_key(&pid) { let c = start_capture(pid, shared.clone()); st.caps.insert(pid, c); } }
+    for pid in running {
+        let drop_it = match st.caps.get_mut(&pid) {
+            None => false,
+            Some(c) => {
+                if !c.alive.load(Ordering::Relaxed) { true }           // a captura caiu: sai daqui para ser refeita
+                else if want.contains(&pid) { c.off_since = None; false }
+                else if !streaming { true }                             // parou de transmitir: solta tudo
+                else { now.duration_since(*c.off_since.get_or_insert(now)) > GRACE }
+            }
+        };
+        if drop_it {
+            if let Some(c) = st.caps.remove(&pid) {
+                c.stop.store(true, Ordering::Relaxed);
+                st.stopping.push((pid, c.alive.clone()));
+            }
+        }
+    }
+    st.stopping.retain(|(_, a)| a.load(Ordering::Relaxed));
+    for pid in want {
+        if st.caps.contains_key(&pid) { continue; }
+        if st.stopping.iter().any(|(p, _)| *p == pid) { continue; } // a anterior ainda está fechando; tenta de novo na próxima passada
+        let c = start_capture(pid, shared.clone());
+        st.caps.insert(pid, c);
+    }
 }
 
 /* ---------------- Mixer: junta os apps e manda para o site a cada 10 ms ---------------- */
@@ -347,16 +395,15 @@ fn mixer(shared: Shared) {
         let now = Instant::now();
         if next > now { thread::sleep(next - now); } else if now - next > Duration::from_millis(60) { next = now; }
         next += period;
-        let mut st = shared.lock().unwrap();
+        let mut guard = shared.lock().unwrap();
+        let st = &mut *guard;
         if !st.clients.iter().any(|c| c.streaming.load(Ordering::Relaxed)) { continue; }
         mix.iter_mut().for_each(|s| *s = 0.0);
-        let gains: HashMap<u32, f32> = st.apps.iter().flat_map(|a| {
-            let (on, vol) = pref_of(&st.prefs, &a.key);
-            a.roots.iter().map(move |r| (*r, if on { vol } else { 0.0 }))
-        }).collect();
+        let gains = st.gains.clone();
         for (pid, cap) in st.caps.iter_mut() {
-            let g = *gains.get(pid).unwrap_or(&0.0);
             let mut b = cap.buf.lock().unwrap();
+            // app fora da mistura (desmarcado, ainda dentro do prazo): o som é descartado, nada vai para a sala
+            let Some(&g) = gains.get(pid) else { b.clear(); cap.primed = false; continue; };
             if !cap.primed { if b.len() >= TICK * CH * 3 { cap.primed = true; } else { continue; } }
             let n = b.len().min(TICK * CH);
             let e = energy.entry(*pid).or_insert((0.0, 0));
@@ -600,7 +647,7 @@ fn main() {
         Ok(l) => l,
         Err(_) => { message_box("Não foi possível iniciar: a porta 47833 está em uso por outro programa."); return; }
     };
-    let shared: Shared = Arc::new(Mutex::new(State { apps: vec![], prefs: HashMap::new(), clients: vec![], caps: HashMap::new(), version: 0, error: None, tree: HashMap::new() }));
+    let shared: Shared = Arc::new(Mutex::new(State { apps: vec![], prefs: HashMap::new(), clients: vec![], caps: HashMap::new(), version: 0, error: None, tree: HashMap::new(), gains: HashMap::new(), stopping: Vec::new() }));
 
     { let sh = shared.clone(); thread::spawn(move || serve(sh, listener)); }
     { let sh = shared.clone(); thread::spawn(move || mixer(sh)); }

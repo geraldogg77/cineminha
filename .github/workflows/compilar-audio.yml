@@ -1,0 +1,51 @@
+name: Compilar Cineminha Áudio
+
+# Compila o programa do Windows (pasta helper/) e salva o .exe pronto em download/.
+# Roda sozinho quando algo em helper/ muda, ou na mão em Actions > Compilar Cineminha Áudio > Run workflow.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['helper/**']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar o Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Compilar
+        working-directory: helper
+        env:
+          # runtime do Windows embutido no .exe: funciona em PCs sem o Visual C++ instalado
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --release --locked
+
+      - name: Copiar o programa para download/
+        shell: bash
+        run: cp helper/target/release/CineminhaAudio.exe download/CineminhaAudio.exe
+
+      - name: Guardar uma cópia nesta execução
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineminhaAudio
+          path: download/CineminhaAudio.exe
+
+      - name: Salvar o .exe no repositório
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add download/CineminhaAudio.exe
+          if git diff --cached --quiet; then
+            echo "O .exe já está atualizado."
+          else
+            git commit -m "Compila o Cineminha Áudio"
+            git push
+          fi

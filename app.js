@@ -48,7 +48,7 @@ if (!/^#[0-9a-f]{6}$/i.test(S.accent)) S.accent = '#5B7CFA';
 try { if (!localStorage.getItem('tl-acc2')) { if (S.accent.toUpperCase() === '#F2B544') S.accent = '#5B7CFA'; localStorage.setItem('tl-acc2', '1'); } } catch (e) {}
 let peer, myId = '', hostConn = null, me = '', full = false, paused = false, last = {}, retryT = 0, unread = 0, roomReady = false;
 /* minha transmissão: stream = vídeo + áudio mixado (vai para quem assiste); preview = só o vídeo (para eu ver) */
-let stream = null, disp = null, preview = null, camMode = false, goState = false;
+let stream = null, disp = null, preview = null, camMode = false, goState = false, tabAudio = false;
 const outCalls = new Map();      // quem está assistindo minha tela: id → chamada
 const guests = new Map();        // só no anfitrião: id → {conn, name, av, live}
 let want = null, inCall = null, inStream = null, reqAt = 0, wantMuted = true, deaf = false;
@@ -372,7 +372,7 @@ function detach(key, stopTracks) {
 function gain(key) {
   const n = MX.nodes[key]; if (!n) return;
   const [on, v] = GK[key];
-  n.g.gain.setTargetAtTime(S[on] ? S[v] / 100 : 0, MX.ctx.currentTime, .03);
+  n.g.gain.setTargetAtTime(S[on] || (key === 'screen' && tabAudio) ? S[v] / 100 : 0, MX.ctx.currentTime, .03);
 }
 let devOk = false;
 async function refreshDevices() {
@@ -559,7 +559,7 @@ $('#outTest').onclick = () => {
    Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
    O site só tenta conectar depois que a pessoa baixou ou pediu para conectar, para não incomodar quem não usa. */
 const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: ''};
-const HELPER_LATEST = '1.2.0';
+const HELPER_LATEST = '1.3.0';
 const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.q=[];this.o=0;this.n=0;this.on=false;
 this.port.onmessage=e=>{if(e.data==='reset'){this.q=[];this.o=0;this.n=0;this.on=false;return}this.q.push(e.data);this.n+=e.data.length;
 while(this.n>28800&&this.q.length>1){const d=this.q.shift();this.n-=d.length-this.o;this.o=0}}}
@@ -1009,6 +1009,8 @@ async function start() {
     if (st.width && (st.width < w * .95 || (st.frameRate && st.frameRate < S.fps * .9))) toast('A câmera está entregando ' + st.width + '×' + st.height + (st.frameRate ? ' a ' + Math.round(st.frameRate) + ' fps' : '') + ' nessa configuração.', 'info');
   }
   const hasAudio = disp.getAudioTracks().length > 0;
+  /* ao compartilhar uma guia, o navegador entrega só o som dela (sem o resto do computador e sem a sala): é a separação certa */
+  tabAudio = hasAudio && !cam && (vt.getSettings().displaySurface === 'browser');
   attach('screen', hasAudio ? new MediaStream(disp.getAudioTracks()) : null);
   preview = new MediaStream([vt]);
   stream = new MediaStream([vt, MX.dest.stream.getAudioTracks()[0]]);
@@ -1016,7 +1018,7 @@ async function start() {
   if (HP.ok) { try { await helperNode(); } catch (e) {} }
   helperStream();
   $('#hint').classList.toggle('warn', !cam && !hasAudio && !S.mxMic && !S.mxExtra && !(HP.ok && S.mxApps));
-  $('#hint').textContent = cam ? (HP.ok && S.mxApps && appsOn() ? 'Webcam ao vivo, com o som dos apps escolhidos.' : S.mxMic ? 'Webcam ao vivo. Sua voz vai pelo microfone da sala.' : 'Webcam ao vivo. Ligue o microfone (tecla V) para falar com a sala.') : HP.ok && S.mxApps ? (appsOn() ? 'Som dos apps escolhidos incluído. Ajuste no mixer de áudio.' : 'Nenhum app marcado: abra o mixer de áudio e marque os apps que devem entrar na transmissão.') : hasAudio ? 'Som da tela incluído. Ajuste as fontes no mixer de áudio.' : 'Sem som da tela: ao compartilhar, marque “Compartilhar áudio do sistema” (tela inteira) ou “Compartilhar áudio da guia”.';
+  $('#hint').textContent = tabAudio ? (HP.ok && S.mxApps && appsOn() ? 'Som da guia e dos apps escolhidos incluído.' : 'Som só da guia compartilhada incluído. O resto do computador fica de fora.') : cam ? (HP.ok && S.mxApps && appsOn() ? 'Webcam ao vivo, com o som dos apps escolhidos.' : S.mxMic ? 'Webcam ao vivo. Sua voz vai pelo microfone da sala.' : 'Webcam ao vivo. Ligue o microfone (tecla V) para falar com a sala.') : HP.ok && S.mxApps ? (appsOn() ? 'Som dos apps escolhidos incluído. Ajuste no mixer de áudio.' : 'Nenhum app marcado: abra o mixer de áudio e marque os apps que devem entrar na transmissão.') : hasAudio ? 'Som da tela incluído. Ajuste as fontes no mixer de áudio.' : 'Sem som da tela: ao compartilhar, marque “Compartilhar áudio do sistema” (tela inteira) ou “Compartilhar áudio da guia”.';
   setGo(true); toast('Você está transmitindo', 'ok');
   if (!want || !liveIds().includes(want)) { closeIn(); want = myId; }
   toRoom({t: 'live', on: true});
@@ -1026,7 +1028,7 @@ function stop() {
   if (!stream) return;
   disp.getTracks().forEach(t => { t.onended = null; t.stop(); });
   ['screen', 'extra'].forEach(k => detach(k, k !== 'screen'));
-  stream = null; camMode = false; helperStream(); disp = null; preview = null; paused = false;
+  stream = null; camMode = false; tabAudio = false; helperStream(); disp = null; preview = null; paused = false;
   $$('[data-act=pause] use').forEach(u => u.setAttribute('href', '#i-pause'));
   $$('[data-act=pause]').forEach(b => { b.dataset.tip = 'Pausar imagem'; b.classList.remove('on'); });
   [...outCalls.keys()].forEach(closeOut);

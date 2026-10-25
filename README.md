@@ -32,11 +32,19 @@ No mixer (botão de controles deslizantes ou **Configurações → Transmissão*
 O navegador sozinho não separa o som de cada programa. Para escolher app por app, como na lista de compartilhamento do Discord, existe o **Cineminha Áudio**: um programa de 650 KB para Windows 10 e 11, sem instalação, que fica na bandeja perto do relógio.
 
 1. No mixer, clique em **Baixar Cineminha Áudio** e abra o arquivo. Como o programa não tem assinatura digital paga, o Windows pode avisar que protegeu o computador: clique em **Mais informações** › **Executar assim mesmo**.
-2. O site conecta sozinho e mostra os apps que estão tocando som. Desmarque os que devem ficar de fora e deixe o **Som da tela** desligado, porque ele leva o som do computador inteiro.
+2. O site conecta sozinho e mostra os apps que estão tocando som. Todo app novo começa **desmarcado**: marque só os que devem entrar na transmissão e deixe o **Som da tela** desligado, porque ele leva o som do computador inteiro.
    O Windows captura um app junto com os programas que ele abriu: o Steam, por exemplo, leva junto os jogos abertos por ele. Quando isso acontece, a lista mostra "Leva junto" embaixo do app.
 3. Se o navegador pedir acesso a dispositivos da rede local, clique em **Permitir**: é assim que a página conversa com o programa no seu computador.
 
-O programa só captura enquanto você transmite, só aceita conexões do próprio computador vindas do site do Cineminha e não envia nada para a internet: quem manda o som para a sala é o navegador. O código está em `helper/` e o arquivo pronto em `download/`. Para gerar de novo: `cd helper && cargo zigbuild --release --target x86_64-pc-windows-gnu`.
+**Limites do Windows que nenhum programa contorna** (o OBS tem os mesmos): o som é separado por processo, não por aba. Se o filme e a sala estiverem no mesmo navegador, o som da sala volta para a transmissão (eco). Para evitar:
+
+- **Melhor:** compartilhe a **guia** do filme e marque “Compartilhar áudio da guia”. O navegador entrega só o som dessa guia e o Cineminha usa esse som automaticamente.
+- Ou abra a sala em um navegador e o filme em outro (por exemplo, a sala no Edge e o filme no Chrome): aí cada um aparece como um app na lista.
+- Alguns programas, como o Microsoft Teams, não deixam o Windows separar o som deles; use o VB-CABLE nesses casos.
+
+Marcar e desmarcar um app não recria a captura: ele fica em silêncio por 20 segundos e depois fecha, então ligar de novo é instantâneo. Se uma captura cair, o programa a refaz sozinho.
+
+O programa só captura enquanto você transmite, só aceita conexões do próprio computador vindas do site do Cineminha e não envia nada para a internet: quem manda o som para a sala é o navegador. O código está em `helper/` e o arquivo pronto em `download/`. O `.exe` é gerado sozinho pelo GitHub (aba **Actions** › **Compilar Cineminha Áudio**) sempre que algo em `helper/` muda. Para gerar na sua máquina: `cd helper && cargo zigbuild --release --target x86_64-pc-windows-gnu`.
 
 Sem o Cineminha Áudio também dá: instale o VB-CABLE (gratuito), mande a saída desses apps para **CABLE Input** no Mixer de volume do Windows e escolha **CABLE Output** na entrada extra. O passo a passo completo está dentro do mixer.
 
