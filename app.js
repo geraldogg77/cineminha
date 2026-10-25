@@ -53,7 +53,11 @@ const guests = new Map();        // só no anfitrião: id → {conn, name, av, l
 let want = null, inCall = null, inStream = null, reqAt = 0, wantMuted = true, deaf = false;
 const clean = s => String(s || '').trim().slice(0, 20);
 const hue = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
-const play = () => { const p = vid.play(); if (p) p.catch(() => {}); };
+const play = () => { const p = vid.play(); if (p) p.catch(() => { if (!vid.muted) { wantMuted = true; vid.muted = true; needSound(); vid.play().catch(() => {}); } }); };
+/* mostra "Ativar som" quando o navegador (principalmente no celular) bloqueou o som até um toque */
+function needSound() { const b = document.querySelector('#sound'); if (b) b.hidden = false; if (typeof syncVol === 'function') syncVol(); }
+/* iPhone: sem isso, a página obedece à chave de silencioso e o som pode sair pelo alto-falante de ligação */
+function audioSession() { try { if (navigator.audioSession) navigator.audioSession.type = VO.on ? 'play-and-record' : 'playback'; } catch (e) {} }
 const narrow = () => matchMedia('(max-width:900px)').matches;
 
 /* ---------- Fotos de perfil: ficam no navegador e só viajam pela conexão da sala ---------- */
@@ -333,7 +337,7 @@ document.addEventListener('keydown', e => {
   const k = e.key.toLowerCase(), m = {f: 'fs', t: 'theater', c: 'chat', s: 'stats', m: 'mute', p: 'pause', v: 'mic', d: 'deaf'}[k];
   if (m) { e.preventDefault(); act[m](); wake(); }
 });
-$('#sound').onclick = () => { wantMuted = false; if (vid.volume === 0) vid.volume = 1; applyMute(); play(); $('#sound').hidden = true; syncVol(); };
+$('#sound').onclick = () => { audioSession(); wantMuted = false; if (vid.volume === 0) vid.volume = 1; applyMute(); play(); VO.inc.forEach(v => v.el.play().catch(() => {})); if (MX.ctx && MX.ctx.state === 'suspended') MX.ctx.resume().catch(() => {}); $('#sound').hidden = true; syncVol(); };
 $('#vol').oninput = e => { vid.volume = +e.target.value; wantMuted = vid.volume === 0; $('#sound').hidden = true; applyMute(); syncVol(); };
 const applyMute = () => { vid.muted = want === myId || wantMuted || deaf; };
 
@@ -467,7 +471,7 @@ async function voiceMic() {
     src.connect(g); g.connect(an); g.connect(VO.dest);
     MX.nodes.mic = {ms, src, g, an, buf: new Uint8Array(an.fftSize)}; gain('mic');
     if (!devOk) refreshDevices();
-    if (!VO.on) { VO.on = true; toRoom({t: 'voice', on: true}); }
+    if (!VO.on) { VO.on = true; audioSession(); toRoom({t: 'voice', on: true}); }
     syncVoice();
   } catch (e) {
     S.mxMic = false; save(); sync();
@@ -477,7 +481,7 @@ async function voiceMic() {
 function stopVoice() {
   detach('mic', true);
   [...VO.out.values()].forEach(c => c.close()); VO.out.clear();
-  if (VO.on) { VO.on = false; toRoom({t: 'voice', on: false}); }
+  if (VO.on) { VO.on = false; audioSession(); toRoom({t: 'voice', on: false}); }
 }
 /* liga a voz para quem entrou e desliga de quem saiu */
 function syncVoice() {
@@ -498,8 +502,7 @@ function onVoiceCall(c) {
   const v = {call: c, el, an: null, buf: null}; VO.inc.set(c.peer, v);
   c.answer(undefined);
   c.on('stream', s => {
-    el.srcObject = s; el.volume = S.vVoice / 100; el.muted = deaf; sinkOf(el); el.play().catch(() => {});
-    try { const ctx = mixCtx(), an = ctx.createAnalyser(); an.fftSize = 512; ctx.createMediaStreamSource(s).connect(an); v.an = an; v.buf = new Uint8Array(an.fftSize); } catch (e) {}
+    el.srcObject = s; el.volume = S.vVoice / 100; el.muted = deaf; sinkOf(el); el.play().catch(needSound);
   });
   c.on('close', () => { if (VO.inc.get(c.peer) === v) VO.inc.delete(c.peer); el.remove(); });
 }
@@ -512,13 +515,17 @@ function paintDeaf() {
 }
 /* anel verde em quem está falando */
 const lvl = (an, buf) => { an.getByteTimeDomainData(buf); let s = 0; for (const x of buf) { const y = (x - 128) / 128; s += y * y; } return Math.sqrt(s / buf.length); };
-setInterval(() => {
+/* o nível de quem fala vem das estatísticas da conexão, sem passar o som pelo Web Audio (no iPhone isso mudava o som de lugar) */
+setInterval(async () => {
   const talking = new Set();
   if (VO.on && MX.nodes.mic && lvl(MX.nodes.mic.an, MX.nodes.mic.buf) > .02) talking.add(myId);
-  VO.inc.forEach((v, id) => { if (v.an && !deaf && lvl(v.an, v.buf) > .02) talking.add(id); });
+  for (const [id, v] of VO.inc) {
+    const pc = v.call.peerConnection; if (!pc || deaf) continue;
+    try { (await pc.getStats()).forEach(x => { if (x.type === 'inbound-rtp' && x.kind === 'audio' && (x.audioLevel || 0) > .03) talking.add(id); }); } catch (e) {}
+  }
   $$('.mem').forEach(r => r.querySelector('.av').classList.toggle('speak', talking.has(r.dataset.id)));
   $$('#avs .av').forEach(a => a.classList.toggle('speak', talking.has(a.dataset.id)));
-}, 120);
+}, 250);
 $('#outTest').onclick = () => {
   const ctx = new (window.AudioContext || window.webkitAudioContext)(), n = Math.round(ctx.sampleRate * .45), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
   for (let i = 0; i < n; i++) { const t = i / ctx.sampleRate, f = t < .15 ? 660 : t < .3 ? 880 : 990; d[i] = Math.sin(2 * Math.PI * f * t) * .25 * Math.min(1, (n - i) / 2000); }
@@ -1049,7 +1056,8 @@ $('#nf').onsubmit = e => {
   paintMe(); $('#meName').textContent = me; $('#meRole').textContent = isHost ? 'Anfitrião' : 'Convidado';
   $('#modal').classList.add('out'); setTimeout(() => $('#modal').remove(), 220);
   addMsg({t: 'sys', text: 'Você entrou como ' + me});
-  mixCtx();
+  audioSession();
+  if (S.mxMic) mixCtx();
   isHost ? initHost() : initViewer();
 };
 addEventListener('resize', moveInd);
