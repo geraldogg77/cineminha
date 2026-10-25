@@ -12,6 +12,10 @@ Transmita sua tela para até 4 amigos direto do navegador, com áudio e chat ao 
 
 Funciona melhor no Chrome ou Edge no computador. Quem assiste pode usar qualquer navegador, inclusive no celular.
 
+## Webcam
+
+Em **Configurações → Transmissão → Fonte do vídeo**, escolha **Webcam** para transmitir a câmera em vez da tela (e a câmera, se tiver mais de uma). Ela usa a mesma resolução, taxa de quadros e taxa de bits das configurações, sempre priorizando a fluidez. Se a câmera não entregar o que foi pedido, o site avisa o que ela está entregando. A voz vai pelo microfone da sala (tecla V). A escolha vale a partir da próxima transmissão.
+
 ## Voz na sala
 
 Ligue o **Microfone** (botão de microfone ou tecla V) e todos na sala ouvem você, transmitindo a tela ou não, como num canal de voz. Quem está falando ganha um anel verde no avatar. Em **Configurações → Transmissão → Saída de áudio** você escolhe onde ouvir as vozes e as telas, por exemplo o seu headset, e pode tocar um som de teste. O botão de fone (tecla D) desliga todo o som da sala para você.

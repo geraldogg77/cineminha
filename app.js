@@ -38,16 +38,17 @@ const PRE = {
 };
 const S = {theme: 'dark', accent: '#5B7CFA', calm: false, res: 1080, fps: 60, br: 12, prio: 'motion', codec: 'auto', abr: 320, max: 2,
   mxScreen: true, vScreen: 100, mxMic: false, vMic: 100, micDev: '', mxExtra: false, vExtra: 100, extDev: '',
-  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false, outDev: '', vVoice: 100};
+  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false, outDev: '', vVoice: 100, src: 'screen', camDev: ''};
 try { Object.assign(S, JSON.parse(localStorage.getItem('tl-set') || '{}')); } catch (e) {}
 if (!['dark', 'classic', 'oled', 'light'].includes(S.theme)) S.theme = 'dark';
+if (!['screen', 'cam'].includes(S.src)) S.src = 'screen';
 S.max = Math.min(10, Math.max(1, +S.max || 2));
 if (!/^#[0-9a-f]{6}$/i.test(S.accent)) S.accent = '#5B7CFA';
 /* versão 8 tinha âmbar como padrão: quem ficou com ele sem escolher volta ao azul uma única vez */
 try { if (!localStorage.getItem('tl-acc2')) { if (S.accent.toUpperCase() === '#F2B544') S.accent = '#5B7CFA'; localStorage.setItem('tl-acc2', '1'); } } catch (e) {}
 let peer, myId = '', hostConn = null, me = '', full = false, paused = false, last = {}, retryT = 0, unread = 0, roomReady = false;
 /* minha transmissão: stream = vídeo + áudio mixado (vai para quem assiste); preview = só o vídeo (para eu ver) */
-let stream = null, disp = null, preview = null;
+let stream = null, disp = null, preview = null, camMode = false, goState = false;
 const outCalls = new Map();      // quem está assistindo minha tela: id → chamada
 const guests = new Map();        // só no anfitrião: id → {conn, name, av, live}
 let want = null, inCall = null, inStream = null, reqAt = 0, wantMuted = true, deaf = false;
@@ -216,17 +217,18 @@ function sync() {
   $('#need').textContent = 'Cada pessoa que assiste sua tela usa cerca de ' + Math.ceil(per) + ' Mbps do seu upload: ' + Math.ceil(per * 3) + ' Mbps para 3 pessoas e ' + Math.ceil(per * 9) + ' Mbps para 9. Se a imagem travar, diminua a taxa de bits.';
   $$('[data-pct]').forEach(b => b.textContent = S[b.dataset.pct] + '%');
   [['screen', 'mxScreen'], ['mic', 'mxMic'], ['extra', 'mxExtra'], ['apps', 'mxApps']].forEach(([k, on]) => $('.mrow[data-src=' + k + ']').classList.toggle('off', !S[on]));
+  $('#camSel').hidden = S.src !== 'cam'; setGo(goState);
   $$('.micB').forEach(b => { b.classList.toggle('on', S.mxMic); b.querySelector('use').setAttribute('href', S.mxMic ? '#i-mic' : '#i-micoff'); b.dataset.tip = S.mxMic ? 'Desligar microfone' : 'Ligar microfone'; });
 }
 const save = () => { try { localStorage.setItem('tl-set', JSON.stringify(S)); } catch (e) {} };
 function live(k) {
   if (!stream) return;
   const vt = stream.getVideoTracks()[0];
-  vt.contentHint = S.prio === 'detail' ? 'detail' : 'motion';
+  vt.contentHint = !camMode && S.prio === 'detail' ? 'detail' : 'motion';
   if (!k || k === 'res' || k === 'fps') {
     const [w, h] = RES[S.res];
     vt.applyConstraints({width: {ideal: w}, height: {ideal: h}, frameRate: {ideal: S.fps}})
-      .then(() => { const s = vt.getSettings(); toast('Captura: ' + s.width + '×' + s.height + ', ' + Math.round(s.frameRate) + ' fps', 'ok'); })
+      .then(() => { const s = vt.getSettings(); toast((camMode ? 'Webcam: ' : 'Captura: ') + s.width + '×' + s.height + ', ' + Math.round(s.frameRate) + ' fps', 'ok'); })
       .catch(() => toast('Não foi possível mudar a captura agora.', 'err'));
   }
   outCalls.forEach(tune);
@@ -379,18 +381,21 @@ async function refreshDevices() {
   try { list = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId); } catch (e) { return; }
   devOk = list.some(d => d.label);
   $('#devPerm').hidden = devOk;
-  const fillSel = (sel, first) => {
+  let cams = [];
+  try { cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput' && d.deviceId); } catch (e) {}
+  const fillSel = (sel, first, items = list) => {
     sel.textContent = '';
     const o0 = document.createElement('option'); o0.value = ''; o0.textContent = first; sel.append(o0);
-    list.filter(d => d.deviceId !== 'default' && d.deviceId !== 'communications').forEach((d, i) => {
-      const o = document.createElement('option'); o.value = d.deviceId; o.textContent = d.label || 'Entrada de áudio ' + (i + 1);
-      if (/cable|vb-audio|voicemeeter|virtual/i.test(d.label)) o.dataset.d = 'Cabo virtual';
+    items.filter(d => d.deviceId !== 'default' && d.deviceId !== 'communications').forEach((d, i) => {
+      const o = document.createElement('option'); o.value = d.deviceId; o.textContent = d.label || (items === list ? 'Entrada de áudio ' : 'Câmera ') + (i + 1);
+      if (items === list && /cable|vb-audio|voicemeeter|virtual/i.test(d.label)) o.dataset.d = 'Cabo virtual';
       sel.append(o);
     });
     if (sel._rebuild) sel._rebuild();
   };
   fillSel($('select[data-k=micDev]'), 'Microfone padrão do sistema');
   fillSel($('select[data-k=extDev]'), 'Escolha um dispositivo');
+  fillSel($('select[data-k=camDev]'), 'Câmera padrão do sistema', cams);
   try {
     const outs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications');
     const sel = $('select[data-k=outDev]'); sel.textContent = '';
@@ -776,7 +781,7 @@ function render() {
     if (!roomReady) return;
     const u = want && byId(want);
     if (u) setStatus('Conectando à tela de ' + u.name + '…', 'A imagem aparece em alguns segundos.');
-    else if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) setStatus('Ninguém está transmitindo', 'Compartilhe sua tela com a sala ou espere alguém começar. Todos podem transmitir.');
+    else if (navigator.mediaDevices && (navigator.mediaDevices.getDisplayMedia || navigator.mediaDevices.getUserMedia)) setStatus('Ninguém está transmitindo', 'Compartilhe sua tela com a sala ou espere alguém começar. Todos podem transmitir.');
     else setStatus('Ninguém está transmitindo', 'Assim que alguém começar, a tela aparece aqui. Para transmitir, use Chrome ou Edge no computador.');
   }
   syncVol(); renderScreens(); paintLive();
@@ -852,7 +857,7 @@ function tune(c) {
     const p = s.getParameters(); if (!p.encodings || !p.encodings.length) p.encodings = [{}];
     if (s.track.kind === 'video') {
       p.encodings[0].maxBitrate = S.br * 1e6; p.encodings[0].maxFramerate = S.fps;
-      p.degradationPreference = S.prio === 'detail' ? 'maintain-resolution' : 'maintain-framerate';
+      p.degradationPreference = !camMode && S.prio === 'detail' ? 'maintain-resolution' : 'maintain-framerate';
       p.encodings[0].networkPriority = 'high'; p.encodings[0].priority = 'high';
     } else p.encodings[0].maxBitrate = S.abr * 1000;
     try { await s.setParameters(p); } catch (e) {}
@@ -971,19 +976,38 @@ function connect() {
 
 /* ---------- Transmitir ---------- */
 async function start() {
-  if (!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)) return toast('Este navegador não compartilha a tela. Use Chrome ou Edge no computador.', 'err');
+  const wantCam = S.src === 'cam', md = navigator.mediaDevices;
+  if (!(md && (wantCam ? md.getUserMedia : md.getDisplayMedia))) return toast(wantCam ? 'Este navegador não consegue abrir a câmera.' : 'Este navegador não compartilha a tela. Use Chrome ou Edge no computador.', 'err');
   if (!roomReady) return toast('Aguarde a conexão com a sala para transmitir.', 'info');
-  const [w, h] = RES[S.res];
+  const [w, h] = RES[S.res], cam = S.src === 'cam';
   setGo('wait'); mixCtx();
   try {
-    disp = await navigator.mediaDevices.getDisplayMedia({
-      video: {width: {ideal: w}, height: {ideal: h}, frameRate: {ideal: S.fps}},
-      audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000, restrictOwnAudio: true},
-      selfBrowserSurface: 'exclude', surfaceSwitching: 'include', systemAudio: 'include'
-    });
-  } catch (e) { disp = null; setGo(false); toast('Compartilhamento cancelado ou bloqueado pelo navegador.', 'info'); return; }
+    disp = cam
+      /* webcam: pede a resolução e a taxa de quadros escolhidas e deixa a câmera entregar o melhor que tiver. O som vai pelo microfone da sala */
+      ? await navigator.mediaDevices.getUserMedia({video: {deviceId: S.camDev ? {ideal: S.camDev} : undefined, width: {ideal: w}, height: {ideal: h}, frameRate: {ideal: S.fps}, aspectRatio: {ideal: 16 / 9}}, audio: false})
+      : await navigator.mediaDevices.getDisplayMedia({
+        video: {width: {ideal: w}, height: {ideal: h}, frameRate: {ideal: S.fps}},
+        audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000, restrictOwnAudio: true},
+        selfBrowserSurface: 'exclude', surfaceSwitching: 'include', systemAudio: 'include'
+      });
+  } catch (e) {
+    disp = null; setGo(false);
+    const n = e && e.name;
+    toast(!cam ? 'Compartilhamento cancelado ou bloqueado pelo navegador.'
+      : n === 'NotAllowedError' ? 'O navegador bloqueou a câmera. Libere no cadeado ao lado do endereço.'
+      : n === 'NotFoundError' ? 'Nenhuma câmera encontrada neste computador.'
+      : n === 'NotReadableError' ? 'A câmera está em uso por outro programa. Feche-o e tente de novo.'
+      : 'Não foi possível abrir a câmera.', cam ? 'err' : 'info');
+    return;
+  }
+  camMode = cam;
   const vt = disp.getVideoTracks()[0];
-  vt.contentHint = S.prio === 'detail' ? 'detail' : 'motion'; vt.onended = stop;
+  vt.contentHint = !cam && S.prio === 'detail' ? 'detail' : 'motion'; vt.onended = stop;
+  if (cam) {
+    refreshDevices();
+    const st = vt.getSettings();
+    if (st.width && (st.width < w * .95 || (st.frameRate && st.frameRate < S.fps * .9))) toast('A câmera está entregando ' + st.width + '×' + st.height + (st.frameRate ? ' a ' + Math.round(st.frameRate) + ' fps' : '') + ' nessa configuração.', 'info');
+  }
   const hasAudio = disp.getAudioTracks().length > 0;
   attach('screen', hasAudio ? new MediaStream(disp.getAudioTracks()) : null);
   preview = new MediaStream([vt]);
@@ -991,8 +1015,8 @@ async function start() {
   await openInput('extra');
   if (HP.ok) { try { await helperNode(); } catch (e) {} }
   helperStream();
-  $('#hint').classList.toggle('warn', !hasAudio && !S.mxMic && !S.mxExtra && !(HP.ok && S.mxApps));
-  $('#hint').textContent = HP.ok && S.mxApps ? (appsOn() ? 'Som dos apps escolhidos incluído. Ajuste no mixer de áudio.' : 'Nenhum app marcado: abra o mixer de áudio e marque os apps que devem entrar na transmissão.') : hasAudio ? 'Som da tela incluído. Ajuste as fontes no mixer de áudio.' : 'Sem som da tela: ao compartilhar, marque “Compartilhar áudio do sistema” (tela inteira) ou “Compartilhar áudio da guia”.';
+  $('#hint').classList.toggle('warn', !cam && !hasAudio && !S.mxMic && !S.mxExtra && !(HP.ok && S.mxApps));
+  $('#hint').textContent = cam ? (HP.ok && S.mxApps && appsOn() ? 'Webcam ao vivo, com o som dos apps escolhidos.' : S.mxMic ? 'Webcam ao vivo. Sua voz vai pelo microfone da sala.' : 'Webcam ao vivo. Ligue o microfone (tecla V) para falar com a sala.') : HP.ok && S.mxApps ? (appsOn() ? 'Som dos apps escolhidos incluído. Ajuste no mixer de áudio.' : 'Nenhum app marcado: abra o mixer de áudio e marque os apps que devem entrar na transmissão.') : hasAudio ? 'Som da tela incluído. Ajuste as fontes no mixer de áudio.' : 'Sem som da tela: ao compartilhar, marque “Compartilhar áudio do sistema” (tela inteira) ou “Compartilhar áudio da guia”.';
   setGo(true); toast('Você está transmitindo', 'ok');
   if (!want || !liveIds().includes(want)) { closeIn(); want = myId; }
   toRoom({t: 'live', on: true});
@@ -1002,7 +1026,7 @@ function stop() {
   if (!stream) return;
   disp.getTracks().forEach(t => { t.onended = null; t.stop(); });
   ['screen', 'extra'].forEach(k => detach(k, k !== 'screen'));
-  stream = null; helperStream(); disp = null; preview = null; paused = false;
+  stream = null; camMode = false; helperStream(); disp = null; preview = null; paused = false;
   $$('[data-act=pause] use').forEach(u => u.setAttribute('href', '#i-pause'));
   $$('[data-act=pause]').forEach(b => { b.dataset.tip = 'Pausar imagem'; b.classList.remove('on'); });
   [...outCalls.keys()].forEach(closeOut);
@@ -1014,9 +1038,10 @@ function stop() {
   reconcile();
 }
 function setGo(on) {
+  goState = on;
   ['#go', '#goBig'].forEach(s => {
     const b = $(s); b.disabled = on === 'wait';
-    b.querySelector('span').textContent = on === 'wait' ? 'Escolha a tela…' : on ? 'Parar transmissão' : 'Transmitir minha tela';
+    b.querySelector('span').textContent = on === 'wait' ? (S.src === 'cam' ? 'Abrindo a câmera…' : 'Escolha a tela…') : on ? 'Parar transmissão' : 'Transmitir minha ' + (S.src === 'cam' ? 'webcam' : 'tela');
     b.querySelector('use').setAttribute('href', on === true ? '#i-stop' : '#i-play'); b.classList.toggle('stop', on === true);
   });
 }

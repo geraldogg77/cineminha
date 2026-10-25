@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=19">
+<link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body class="booting">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -191,6 +191,8 @@
      <li>Para continuar ouvindo esses apps, abra o Painel de som do Windows › Gravação › CABLE Output › Propriedades › Escutar, marque “Escutar este dispositivo” e escolha seu fone.</li></ol>
    </details>
   </section>
+  <div class="f"><span class="fl" id="l-src">Fonte do vídeo</span><select data-k="src" aria-labelledby="l-src"><option value="screen" data-d="Tela, janela ou aba">Tela</option><option value="cam" data-d="Câmera do computador">Webcam</option></select><small class="fh">Vale a partir da próxima transmissão. Na webcam, a voz vai pelo microfone da sala.</small></div>
+  <div class="f" id="camSel" hidden><span class="fl" id="l-cam">Câmera</span><select data-k="camDev" aria-labelledby="l-cam"><option value="">Câmera padrão do sistema</option></select></div>
   <div class="f"><span class="fl">Predefinições</span><div class="chips">
    <button class="chp" data-pre="bal">Equilibrada</button><button class="chp" data-pre="alta">Alta</button><button class="chp" data-pre="max">Máxima</button><button class="chp" data-pre="txt">Texto nítido</button></div></div>
   <div class="f"><span class="fl" id="l-res">Resolução</span><select data-k="res" data-n aria-labelledby="l-res"><option value="720">720p</option><option value="1080" data-d="Full HD">1080p</option><option value="1440" data-d="2K">1440p</option><option value="2160" data-d="4K, exige upload alto">2160p</option></select></div>
@@ -238,6 +240,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>
