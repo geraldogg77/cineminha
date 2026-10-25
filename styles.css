@@ -561,3 +561,9 @@ body.theater .ctl{display:none}
 /* ---------- Movimento reduzido ---------- */
 :root.calm *,:root.calm *::before,:root.calm *::after{animation:none!important;transition:none!important}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+.vmute{width:30px;height:30px;margin-left:auto;color:var(--muted);flex:none}
+.vmute .i{width:16px;height:16px}
+.vmute:hover{background:var(--hover);color:var(--head)}
+.vmute.on{color:var(--live)}
+.watch + .vmute{margin-left:6px}
+.app .inc.echo{color:var(--warn)}

@@ -458,6 +458,8 @@ function mixChanged(k) {
    Quem liga o microfone liga uma chamada só de áudio para cada pessoa da sala.
    A voz não depende de transmitir a tela: todo mundo ouve todo mundo, como num canal de voz. */
 const VO = {dest: null, out: new Map(), inc: new Map(), on: false};
+/* quem eu silenciei só na voz: a transmissão da tela dessa pessoa continua com som */
+const vMuted = new Set();
 async function voiceMic() {
   if (!S.mxMic) { stopVoice(); return; }
   if (!me || !navigator.mediaDevices) return;
@@ -502,14 +504,28 @@ function onVoiceCall(c) {
   const v = {call: c, el, an: null, buf: null}; VO.inc.set(c.peer, v);
   c.answer(undefined);
   c.on('stream', s => {
-    el.srcObject = s; el.volume = S.vVoice / 100; el.muted = deaf; sinkOf(el); el.play().catch(needSound);
+    el.srcObject = s; el.volume = S.vVoice / 100; el.muted = deaf || vMuted.has(c.peer); sinkOf(el); el.play().catch(needSound);
   });
   c.on('close', () => { if (VO.inc.get(c.peer) === v) VO.inc.delete(c.peer); el.remove(); });
 }
 const sinkOf = el => { if (el.setSinkId) el.setSinkId(S.outDev || '').catch(() => { if (S.outDev) { S.outDev = ''; save(); sync(); toast('A saída de áudio escolhida não está disponível. Voltei para a padrão.', 'info'); } }); };
 function applySinks() { sinkOf(vid); VO.inc.forEach(v => sinkOf(v.el)); }
+function paintVoiceMute(b, id, name) {
+  const m = vMuted.has(id);
+  b.classList.toggle('on', m); b.setAttribute('aria-pressed', m);
+  b.dataset.tip = m ? 'Voltar a ouvir a voz de ' + name : 'Silenciar a voz de ' + name + ' (a tela continua com som)';
+  b.setAttribute('aria-label', b.dataset.tip);
+  b.querySelector('use').setAttribute('href', m ? '#i-micoff' : '#i-mic');
+  if (tipFor === b) placeTip(b);
+}
+function toggleVoiceMute(id, name, b) {
+  const m = !vMuted.has(id); m ? vMuted.add(id) : vMuted.delete(id);
+  const v = VO.inc.get(id); if (v) v.el.muted = deaf || m;
+  paintVoiceMute(b, id, name);
+  toast(m ? 'Voz de ' + name + ' silenciada. Você continua ouvindo a transmissão.' : 'Voltou a ouvir a voz de ' + name, m ? 'info' : 'ok');
+}
 function paintDeaf() {
-  VO.inc.forEach(v => { v.el.muted = deaf; }); applyMute();
+  VO.inc.forEach((v, id) => { v.el.muted = deaf || vMuted.has(id); }); applyMute();
   const b = $('#headB'); b.classList.toggle('deaf', deaf); b.querySelector('use').setAttribute('href', deaf ? '#i-deaf' : '#i-headset');
   b.dataset.tip = deaf ? 'Ligar o som da sala' : 'Desligar o som da sala';
 }
@@ -578,7 +594,15 @@ function helperConnect(loud) {
     let d; try { d = JSON.parse(e.data); } catch (_) { return; }
     if (d.t === 'hello') { HP.ver = d.ver || '1.0.0'; paintApps(); }
     else if (d.t === 'levels') { $$('.app').forEach(r => { const v = d.l && d.l[r.dataset.key]; r.style.setProperty('--al', Math.min(1, (v || 0) * 3.2).toFixed(3)); r.classList.toggle('lv', v != null); }); }
-    else if (d.t === 'apps') { HP.apps = Array.isArray(d.list) ? d.list : []; HP.error = d.error || null; paintApps(); }
+    else if (d.t === 'apps') {
+      HP.apps = Array.isArray(d.list) ? d.list : []; HP.error = d.error || null;
+      /* o programa do Windows liga todo app novo por padrão, o que levava o som do computador inteiro.
+         Aqui o padrão é o contrário: app que a pessoa nunca marcou fica de fora e é desligado no programa na hora. */
+      const fresh = {};
+      HP.apps.forEach(a => { if (!S.appPrefs[a.key]) fresh[a.key] = S.appPrefs[a.key] = {on: false, vol: 100}; });
+      if (Object.keys(fresh).length) { save(); helperSend({t: 'prefs', apps: fresh}); }
+      paintApps();
+    }
   };
   ws.onclose = () => {
     const was = HP.ok; HP.ok = false; HP.ws = null; HP.apps = []; paintApps();
@@ -588,6 +612,9 @@ function helperConnect(loud) {
 }
 function helperPoll(ms) { clearInterval(HP.poll); const end = Date.now() + ms; HP.poll = setInterval(() => { if (HP.ok || Date.now() > end) { clearInterval(HP.poll); HP.poll = 0; return; } helperConnect(false); }, 3000); }
 const isWin = /Windows/i.test(navigator.userAgent);
+/* o navegador em que a sala está aberta: capturar ele manda a voz e as telas da sala de volta para a transmissão */
+const ownBrowser = navigator.brave ? /[\\/]brave\.exe$/ : /Edg\//.test(navigator.userAgent) ? /[\\/]msedge\.exe$/ : /OPR\//.test(navigator.userAgent) ? /[\\/]opera\.exe$/ : /Firefox\//.test(navigator.userAgent) ? /[\\/]firefox\.exe$/ : /[\\/]chrome\.exe$/;
+const appsOn = () => HP.apps.filter(a => S.appPrefs[a.key] && S.appPrefs[a.key].on).length;
 function paintApps() {
   const list = $('#appList'), get = $('#appGet'), row = $('.mrow.apps');
   row.classList.toggle('conn', HP.ok);
@@ -608,7 +635,7 @@ function paintApps() {
   const known = new Set([...list.querySelectorAll('.app')].map(a => a.dataset.key));
   list.textContent = '';
   const head = document.createElement('p'); head.className = 'appnote';
-  head.textContent = HP.apps.length ? 'Desmarque um app para o som dele ficar de fora. Você continua ouvindo normalmente.' : 'Nenhum app tocando som agora. Abra um programa com áudio e ele aparece aqui.';
+  head.textContent = HP.apps.length ? 'Marque só os apps que devem entrar na transmissão. Os desmarcados ficam de fora e você continua ouvindo tudo normalmente.' : 'Nenhum app tocando som agora. Abra um programa com áudio e ele aparece aqui.';
   list.append(head);
   if (S.mxScreen && S.mxApps) { const w = document.createElement('p'); w.className = 'warn2'; w.textContent = 'O Som da tela está ligado e leva o som do computador inteiro.'; list.append(w); }
   if (HP.error) { const er = document.createElement('p'); er.className = 'apperr'; er.textContent = HP.error; list.append(er); }
@@ -617,19 +644,25 @@ function paintApps() {
     if (known.has(a.key)) l.style.animation = 'none';
     l.innerHTML = '<input type="checkbox"><span class="box"><svg class="i"><use href="#i-check"/></svg></span>' + (a.icon ? '<img alt="">' : '<span class="ph2"></span>') + '<span class="nmw"><span class="nm"></span><small class="inc" hidden></small></span><span class="play" aria-hidden="true"><i></i><i></i><i></i></span><span class="alvl" title="Som capturado deste app agora"><i></i></span>';
     const cb = l.querySelector('input'), p = S.appPrefs[a.key];
-    cb.checked = p ? p.on : a.on;
+    cb.checked = !!(p && p.on);
     if (a.icon) l.querySelector('img').src = a.icon; else l.querySelector('.ph2').textContent = (a.name[0] || '?').toUpperCase();
     l.querySelector('.nm').textContent = a.name;
-    if (a.includes && a.includes.length) { const inc = l.querySelector('.inc'); inc.hidden = false; inc.textContent = 'Leva junto: ' + a.includes.join(', '); } l.title = a.name + (a.active ? ' (tocando agora)' : '');
-    cb.onchange = () => { S.appPrefs[a.key] = {on: cb.checked, vol: (p && p.vol) || 100}; save(); helperSend({t: 'set', key: a.key, on: cb.checked}); paintApps(); };
+    const own = ownBrowser.test(a.key), inc = l.querySelector('.inc');
+    if (own) { inc.hidden = false; inc.classList.add('echo'); inc.textContent = 'Este navegador: marcar devolve a voz e as telas da sala para a transmissão (eco)'; }
+    else if (a.includes && a.includes.length) { inc.hidden = false; inc.textContent = 'Leva junto: ' + a.includes.join(', '); }
+    l.title = a.name + (a.active ? ' (tocando agora)' : '');
+    cb.onchange = () => {
+      S.appPrefs[a.key] = {on: cb.checked, vol: (p && p.vol) || 100}; save(); helperSend({t: 'set', key: a.key, on: cb.checked});
+      if (cb.checked && own) toast('Este é o navegador da sala: marcar ele devolve as vozes e as telas da sala para a transmissão e causa eco. Marque só o app que você quer mostrar.', 'info');
+      paintApps();
+    };
     list.append(l);
   });
   if (HP.apps.some(a => /chrome|msedge|brave|opera|firefox|vivaldi/i.test(a.key))) {
     const n = document.createElement('p'); n.className = 'appnote';
     n.textContent = 'Marcar o navegador inclui o som de todas as abas dele, inclusive desta sala.'; list.append(n);
   }
-  const on = HP.apps.filter(a => (S.appPrefs[a.key] ? S.appPrefs[a.key].on : a.on)).length;
-  $('#appsSub').textContent = 'Cineminha Áudio conectado · ' + on + ' de ' + HP.apps.length + ' apps';
+  $('#appsSub').textContent = 'Cineminha Áudio conectado · ' + appsOn() + ' de ' + HP.apps.length + ' apps';
 }
 $('#appDl').addEventListener('click', () => { $('#appGetH').hidden = false; helperPoll(180000); });
 $('#appDl2').addEventListener('click', () => { toast('Antes de abrir o arquivo novo, feche o atual: ícone azul perto do relógio › Sair.', 'info'); helperPoll(180000); });
@@ -681,12 +714,19 @@ function renderMembers() {
     const r = document.createElement('div'), mine = u.id === myId, can = u.live && !mine && u.id !== want;
     r.className = 'mem' + (can ? ' can' : '') + (u.live && u.id === want && !mine ? ' cur' : ''); r.dataset.id = u.id;
     if (known.has(u.id)) r.style.animation = 'none';
-    r.innerHTML = '<div class="av on"></div><div class="mi"><b></b><small></small></div>' + (can ? '<span class="watch">Assistir</span>' : u.mic ? '<svg class="i vmic"><use href="#i-mic"/></svg>' : '');
+    r.innerHTML = '<div class="av on"></div><div class="mi"><b></b><small></small></div>' + (can ? '<span class="watch">Assistir</span>' : u.mic && mine ? '<svg class="i vmic"><use href="#i-mic"/></svg>' : '');
     avatar(r.querySelector('.av'), u.name); r.querySelector('b').textContent = u.name + (mine ? ' (você)' : '');
     const sm = r.querySelector('small');
     sm.textContent = u.live ? (mine ? 'Transmitindo agora' : u.id === want ? 'Você está assistindo' : 'Transmitindo agora') : u.host ? 'Anfitrião' : 'Na sala';
     sm.classList.toggle('live', !!u.live);
     if (can) { r.tabIndex = 0; r.setAttribute('role', 'button'); r.setAttribute('aria-label', 'Assistir a tela de ' + u.name); r.onclick = () => { nav(false); watch(u.id); }; r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); r.click(); } }; }
+    if (!mine && (u.mic || vMuted.has(u.id))) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'ibtn vmute';
+      b.innerHTML = '<svg class="i"><use href="#i-mic"/></svg>';
+      b.onclick = e => { e.stopPropagation(); toggleVoiceMute(u.id, u.name, b); };
+      b.onkeydown = e => e.stopPropagation();
+      paintVoiceMute(b, u.id, u.name); r.append(b);
+    }
     el.append(r);
     if (av.children.length < 5) { const a = document.createElement('div'); a.className = 'av on' + (u.live ? ' talk' : ''); avatar(a, u.name); a.title = u.name; a.dataset.id = u.id; av.append(a); }
     if (u.host) {
@@ -952,7 +992,7 @@ async function start() {
   if (HP.ok) { try { await helperNode(); } catch (e) {} }
   helperStream();
   $('#hint').classList.toggle('warn', !hasAudio && !S.mxMic && !S.mxExtra && !(HP.ok && S.mxApps));
-  $('#hint').textContent = HP.ok && S.mxApps ? 'Som dos apps escolhidos incluído. Ajuste no mixer de áudio.' : hasAudio ? 'Som da tela incluído. Ajuste as fontes no mixer de áudio.' : 'Sem som da tela: ao compartilhar, marque “Compartilhar áudio do sistema” (tela inteira) ou “Compartilhar áudio da guia”.';
+  $('#hint').textContent = HP.ok && S.mxApps ? (appsOn() ? 'Som dos apps escolhidos incluído. Ajuste no mixer de áudio.' : 'Nenhum app marcado: abra o mixer de áudio e marque os apps que devem entrar na transmissão.') : hasAudio ? 'Som da tela incluído. Ajuste as fontes no mixer de áudio.' : 'Sem som da tela: ao compartilhar, marque “Compartilhar áudio do sistema” (tela inteira) ou “Compartilhar áudio da guia”.';
   setGo(true); toast('Você está transmitindo', 'ok');
   if (!want || !liveIds().includes(want)) { closeIn(); want = myId; }
   toRoom({t: 'live', on: true});
