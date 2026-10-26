@@ -354,8 +354,11 @@ function mixCtx() {
     MX.dest = MX.ctx.createMediaStreamDestination(); MX.dest.channelCount = 2;
   }
   if (MX.ctx.state === 'suspended') MX.ctx.resume().catch(() => {});
+  if (!MX.ctx.onstatechange) MX.ctx.onstatechange = () => { if (MX.ctx.state !== 'running') MX.ctx.resume().catch(() => {}); };
   return MX.ctx;
 }
+/* se o navegador deixar o contexto suspenso (política de áudio), qualquer toque ou tecla na página o acorda */
+['pointerdown', 'keydown'].forEach(ev => addEventListener(ev, () => { if (MX.ctx && MX.ctx.state !== 'running') MX.ctx.resume().catch(() => {}); }, {passive: true}));
 function attach(key, ms) {
   detach(key);
   if (!ms || !ms.getAudioTracks().length) return;
@@ -437,11 +440,17 @@ function exclusive(k) {
   save(); sync(); paintApps();
 }
 function mixChanged(k) {
+  if (k === 'mxScreen' && S.mxScreen && stream && !MX.nodes.screen) {
+    S.mxScreen = false; save(); sync(); paintApps();
+    toast('Esta transmissão não tem som da tela. Pare e comece de novo marcando “Compartilhar áudio do sistema” (tela inteira) ou compartilhe uma guia com áudio.', 'info');
+    return;
+  }
   exclusive(k);
   if (k === 'mxScreen' || k === 'vScreen') { gain('screen'); paintApps(); }
   else if (k === 'vMic') gain('mic');
   else if (k === 'vExtra') gain('extra');
-  else if (k === 'mxApps' || k === 'vApps') { gain('apps'); helperStream(); }
+  else if (k === 'vApps') gain('apps');
+  else if (k === 'mxApps') { gain('apps'); helperStream(); }
   else if (k === 'mxMic' || k === 'micDev') voiceMic();
   else if (k === 'outDev') applySinks();
   else if (k === 'vVoice') VO.inc.forEach(v => { v.el.volume = S.vVoice / 100; });
@@ -558,7 +567,7 @@ $('#outTest').onclick = () => {
 /* ---------- Cineminha Áudio: programa do Windows que captura apps escolhidos ----------
    Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
    O site só tenta conectar depois que a pessoa baixou ou pediu para conectar, para não incomodar quem não usa. */
-const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: '', sig: ''};
+const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: '', sig: '', fr: 0, pk: 0};
 const HELPER_LATEST = '1.3.1';
 const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.q=[];this.o=0;this.n=0;this.on=false;
 this.port.onmessage=e=>{if(e.data==='reset'){this.q=[];this.o=0;this.n=0;this.on=false;return}this.q.push(e.data);this.n+=e.data.length;
@@ -595,7 +604,12 @@ function helperConnect(loud) {
     helperSend({t: 'prefs', apps: S.appPrefs}); helperStream(); paintApps();
   };
   ws.onmessage = e => {
-    if (typeof e.data !== 'string') { if (HP.node) HP.node.port.postMessage(new Float32Array(e.data), [e.data]); return; }
+    if (typeof e.data !== 'string') {
+      const f = new Float32Array(e.data); HP.fr++;
+      for (let i = 0; i < f.length; i += 6) { const a = Math.abs(f[i]); if (a > HP.pk) HP.pk = a; }
+      if (HP.node) HP.node.port.postMessage(f, [e.data]);
+      return;
+    }
     let d; try { d = JSON.parse(e.data); } catch (_) { return; }
     if (d.t === 'hello') { HP.ver = d.ver || '1.0.0'; paintApps(); }
     else if (d.t === 'levels') { $$('.app').forEach(r => { const v = d.l && d.l[r.dataset.key]; r.style.setProperty('--al', Math.min(1, (v || 0) * 3.2).toFixed(3)); r.classList.toggle('lv', v != null); }); }
@@ -682,8 +696,18 @@ function paintApps() {
     const n = document.createElement('p'); n.className = 'appnote';
     n.textContent = 'Marcar o navegador inclui o som de todas as abas dele, inclusive desta sala.'; list.append(n);
   }
+  const dg = document.createElement('p'); dg.className = 'appnote'; dg.id = 'appDiag'; list.append(dg); diag();
   $('#appsSub').textContent = 'Cineminha Áudio conectado · ' + appsOn() + ' de ' + HP.apps.length + ' apps';
 }
+/* mostra, ao vivo, se o som está chegando do programa: ajuda a achar em que ponto ele some */
+function diag(reset) {
+  const el = $('#appDiag'); if (!el) return;
+  el.textContent = !(stream && S.mxApps) ? 'Diagnóstico: comece a transmitir para ver o som chegando do programa.'
+    : HP.fr === 0 ? 'Diagnóstico: nada chegando do programa agora.'
+    : 'Diagnóstico: ' + HP.fr + ' pacotes/s do programa · pico de som ' + Math.round(HP.pk * 100) + '%' + (HP.pk < .002 ? ' (silêncio)' : '');
+  if (reset) { HP.fr = 0; HP.pk = 0; }
+}
+setInterval(() => diag(true), 1000);
 $('#appDl').addEventListener('click', () => { $('#appGetH').hidden = false; helperPoll(180000); });
 $('#appDl2').addEventListener('click', () => { toast('Antes de abrir o arquivo novo, feche o atual: ícone azul perto do relógio › Sair.', 'info'); helperPoll(180000); });
 $('#appConn').onclick = () => { $('#appGetH').hidden = false; helperConnect(true); helperPoll(60000); };
@@ -1003,7 +1027,7 @@ async function start() {
       : await navigator.mediaDevices.getDisplayMedia({
         video: {width: {ideal: w}, height: {ideal: h}, frameRate: {ideal: S.fps}},
         audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000, restrictOwnAudio: true},
-        selfBrowserSurface: 'exclude', surfaceSwitching: 'include', systemAudio: 'include'
+        selfBrowserSurface: 'exclude', surfaceSwitching: 'include', systemAudio: 'include', windowAudio: 'window'
       });
   } catch (e) {
     disp = null; setGo(false);

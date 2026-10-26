@@ -42,6 +42,8 @@ O navegador sozinho não separa o som de cada programa. Para escolher app por ap
 - Ou abra a sala em um navegador e o filme em outro (por exemplo, a sala no Edge e o filme no Chrome): aí cada um aparece como um app na lista.
 - Alguns programas, como o Microsoft Teams, não deixam o Windows separar o som deles; use o VB-CABLE nesses casos.
 
+Na lista de apps há uma linha de **Diagnóstico** que mostra, enquanto você transmite, quantos pacotes de som chegam do programa por segundo e o pico do som. Se aparecer “silêncio”, o programa não está captando nada daquele app; se mostrar som mas o amigo não ouvir, o problema está depois, no navegador ou na rede.
+
 Marcar e desmarcar um app não recria a captura: ele fica em silêncio por 20 segundos e depois fecha, então ligar de novo é instantâneo. Se uma captura cair, o programa a refaz sozinho. A captura vale para o processo principal do app (como no OBS), então ela não se perde quando o Chrome ou o Discord recriam o processo que toca o som. A marcação que aparece no site é a que vale: se o programa estiver com outro valor, o site corrige.
 
 O programa só captura enquanto você transmite, só aceita conexões do próprio computador vindas do site do Cineminha e não envia nada para a internet: quem manda o som para a sala é o navegador. O código está em `helper/` e o arquivo pronto em `download/`. O `.exe` é gerado sozinho pelo GitHub (aba **Actions** › **Compilar Cineminha Áudio**) sempre que algo em `helper/` muda. Para gerar na sua máquina: `cd helper && cargo zigbuild --release --target x86_64-pc-windows-gnu`.
