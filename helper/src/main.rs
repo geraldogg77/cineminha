@@ -233,6 +233,23 @@ fn descendants(pid: u32, table: &HashMap<u32, (u32, String)>) -> HashSet<u32> {
     out
 }
 
+/// Sobe até o processo principal do app: o mesmo programa (mesmo .exe) que está acima na árvore.
+/// O som de apps como o Chrome e o Discord sai de um processo filho que o Windows desliga e recria de tempos
+/// em tempos. Capturar o processo principal (com a árvore dele) mantém a captura valendo mesmo assim,
+/// que é o que o OBS faz ao escolher o app pela janela.
+fn main_process(pid: u32, key: &str, table: &HashMap<u32, (u32, String)>) -> u32 {
+    let mut cur = pid;
+    for _ in 0..8 {
+        let Some(&(parent, _)) = table.get(&cur) else { break };
+        if parent == 0 || parent == cur { break; }
+        match exe_path(parent) {
+            Some(p) if p.to_lowercase() == key => cur = parent,
+            _ => break,
+        }
+    }
+    cur
+}
+
 fn scan_apps(icons: &mut HashMap<String, (String, String)>) -> (Vec<App>, HashMap<u32, HashSet<u32>>) {
     let me = std::process::id();
     let table = process_table();
@@ -244,12 +261,13 @@ fn scan_apps(icons: &mut HashMap<String, (String, String)>) -> (Vec<App>, HashMa
         let Some(path) = exe_path(pid) else { continue };
         let key = path.to_lowercase();
         if key == my_exe { continue; }
+        let root = main_process(pid, &key, &table);
         let (name, icon) = icons.entry(key.clone()).or_insert_with(|| {
             let stem = std::path::Path::new(&path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
             (file_description(&path).unwrap_or(stem), icon_png(&path))
         }).clone();
         let g = groups.entry(key.clone()).or_insert(App { key, name, icon, roots: vec![], active: false, includes: vec![] });
-        if !g.roots.contains(&pid) { g.roots.push(pid); }
+        if !g.roots.contains(&root) { g.roots.push(root); }
         g.active |= active;
     }
     let mut apps: Vec<App> = groups.into_values().collect();

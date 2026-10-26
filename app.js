@@ -558,8 +558,8 @@ $('#outTest').onclick = () => {
 /* ---------- Cineminha Áudio: programa do Windows que captura apps escolhidos ----------
    Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
    O site só tenta conectar depois que a pessoa baixou ou pediu para conectar, para não incomodar quem não usa. */
-const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: ''};
-const HELPER_LATEST = '1.3.0';
+const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: '', sig: ''};
+const HELPER_LATEST = '1.3.1';
 const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.q=[];this.o=0;this.n=0;this.on=false;
 this.port.onmessage=e=>{if(e.data==='reset'){this.q=[];this.o=0;this.n=0;this.on=false;return}this.q.push(e.data);this.n+=e.data.length;
 while(this.n>28800&&this.q.length>1){const d=this.q.shift();this.n-=d.length-this.o;this.o=0}}}
@@ -606,15 +606,23 @@ function helperConnect(loud) {
       const fresh = {};
       HP.apps.forEach(a => { if (!S.appPrefs[a.key]) fresh[a.key] = S.appPrefs[a.key] = {on: false, vol: 100}; });
       if (Object.keys(fresh).length) { save(); helperSend({t: 'prefs', apps: fresh}); }
+      /* a marcação que você vê é a que vale: se o programa estiver com outro valor (outra aba, programa reaberto), o site reenvia a sua */
+      const fix = {};
+      HP.apps.forEach(a => { const p = S.appPrefs[a.key]; if (p && (a.on !== p.on || Math.round(a.vol) !== Math.round(p.vol))) fix[a.key] = p; });
+      if (Object.keys(fix).length) helperSend({t: 'prefs', apps: fix});
       paintApps();
     }
   };
   ws.onclose = () => {
-    const was = HP.ok; HP.ok = false; HP.ws = null; HP.apps = []; paintApps();
+    const was = HP.ok; HP.ok = false; HP.ws = null; HP.apps = []; HP.sig = ''; paintApps();
     if (was) toast('Cineminha Áudio foi fechado. O som dos apps saiu da transmissão.', 'info');
     else if (loud) toast('Não encontrei o Cineminha Áudio. Confira se ele está aberto, com o ícone azul na bandeja do Windows.', 'err');
   };
 }
+addEventListener('storage', e => {
+  if (e.key !== 'tl-set' || !e.newValue) return;
+  try { const n = JSON.parse(e.newValue); if (n && n.appPrefs) { S.appPrefs = n.appPrefs; helperSend({t: 'prefs', apps: S.appPrefs}); paintApps(); } } catch (_) {}
+});
 function helperPoll(ms) { clearInterval(HP.poll); const end = Date.now() + ms; HP.poll = setInterval(() => { if (HP.ok || Date.now() > end) { clearInterval(HP.poll); HP.poll = 0; return; } helperConnect(false); }, 3000); }
 const isWin = /Windows/i.test(navigator.userAgent);
 /* o navegador em que a sala está aberta: capturar ele manda a voz e as telas da sala de volta para a transmissão */
@@ -637,6 +645,13 @@ function paintApps() {
     $('#appDl span').textContent = S.helperSeen ? 'Baixar de novo' : 'Baixar Cineminha Áudio';
     return;
   }
+  const sig = JSON.stringify([HP.apps.map(a => [a.key, a.name, a.includes, !!(S.appPrefs[a.key] && S.appPrefs[a.key].on)]), HP.error, S.mxScreen && S.mxApps]);
+  if (sig === HP.sig && list.children.length) {
+    $$('.app').forEach(r => { const a = HP.apps.find(x => x.key === r.dataset.key); if (a) { r.classList.toggle('on', !!a.active); r.title = a.name + (a.active ? ' (tocando agora)' : ''); } });
+    $('#appsSub').textContent = 'Cineminha Áudio conectado · ' + appsOn() + ' de ' + HP.apps.length + ' apps';
+    return;
+  }
+  HP.sig = sig;
   const known = new Set([...list.querySelectorAll('.app')].map(a => a.dataset.key));
   list.textContent = '';
   const head = document.createElement('p'); head.className = 'appnote';
