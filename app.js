@@ -83,7 +83,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 29;   // igual ao ?v= do app.js no index.html
+const APP_VER = 30;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -463,16 +463,24 @@ function syncVol() {
   const r = $('#vol'); r.value = wantMuted ? 0 : scrVol; fill(r);
 }
 function setChat(show) {
+  const was = !document.body.classList.contains('nochat');
   document.body.classList.toggle('nochat', !show);
+  if (narrow() && show && !was) { try { history.pushState({chat: 1}, ''); } catch (e) {} }
+  if (narrow() && !show && was && history.state && history.state.chat) { try { history.back(); } catch (e) {} }
   if (show) { unread = 0; paintUnread(); }
 }
-function paintUnread() { const u = $('#unread'); u.hidden = !unread; u.textContent = unread > 99 ? '99+' : unread; }
+function paintUnread() { const u = $('#unread'); u.hidden = !unread; u.textContent = unread > 99 ? '99+' : unread; $$('.chatB').forEach(b => b.classList.toggle('dot', unread > 0)); }
+/* no celular o chat é uma folha por cima do palco: começa fechado e fecha no X, no Esc ou no voltar */
+const narrowMQ = matchMedia('(max-width:900px)');
+if (narrowMQ.matches) document.body.classList.add('nochat');
+narrowMQ.addEventListener('change', e => { setChat(!e.matches); setTimeout(() => { if (typeof layout === 'function') layout(); }, 350); });
+$('#chatX').onclick = () => setChat(false);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && narrow() && !document.body.classList.contains('nochat')) setChat(false); });
 const act = {
   fs: () => document.fullscreenElement ? document.exitFullscreen() : stage.requestFullscreen().catch(() => toast('Tela cheia indisponível neste navegador.', 'err')),
   theater: () => document.body.classList.toggle('theater'),
   chat: () => {
     nav(false);
-    if (narrow()) { setChat(true); $('.chat').scrollIntoView({behavior: 'smooth'}); setTimeout(() => $('#mi').focus({preventScroll: true}), 350); return; }
     setChat(document.body.classList.contains('nochat'));
   },
   focusStage: () => { nav(false); stage.scrollIntoView({behavior: 'smooth', block: 'center'}); },
@@ -1161,10 +1169,11 @@ function layout() {
   }
   // escolhe colunas que deixam os quadrados com a maior área; o formato varia entre 5:4 e 19:10
   let best = {a: 0};
+  const minAR = H > W * 1.15 ? .72 : 1.25; // celular em pé: quadrados podem ser mais altos e usar a tela toda
   for (let cols = 1; cols <= n; cols++) {
     const rows = Math.ceil(n / cols), cw = (W - (cols - 1) * GAP) / cols, ch = (H - (rows - 1) * GAP) / rows;
     let w = cw, h = ch;
-    if (w / h > 1.9) w = h * 1.9; else if (w / h < 1.25) h = w / 1.25;
+    if (w / h > 1.9) w = h * 1.9; else if (w / h < minAR) h = w / minAR;
     if (w * h > best.a) best = {a: w * h, w, h, cols, rows};
   }
   const {w, h, cols, rows} = best, y0 = (H - (rows * h + (rows - 1) * GAP)) / 2;
@@ -1218,10 +1227,12 @@ async function camStart() {
   if (camBusy || !navigator.mediaDevices) return;
   camBusy = true;
   try {
-    const ms = await navigator.mediaDevices.getUserMedia({video: {deviceId: S.camDev ? {exact: S.camDev} : undefined, width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 30}}});
+    /* pede o máximo que a câmera entrega (até 1080p 30 fps) */
+    const ms = await navigator.mediaDevices.getUserMedia({video: {deviceId: S.camDev ? {exact: S.camDev} : undefined, width: {ideal: 1920}, height: {ideal: 1080}, frameRate: {ideal: 30}}});
     if (myCam) myCam.getTracks().forEach(t => { t.onended = null; t.stop(); });
     myCam = ms;
-    const t = ms.getVideoTracks()[0]; t.contentHint = 'motion'; t.onended = () => camStop();
+    /* 'detail': o navegador não pode baixar a resolução da câmera para economizar; se faltar banda, cai o fps antes */
+    const t = ms.getVideoTracks()[0]; t.contentHint = 'detail'; t.onended = () => camStop();
     [...camOut.values()].forEach(c => c.close()); camOut.clear();
     toRoom({t: 'cam', on: true}); paintCam(); syncCam(); render();
     if (!devOk) refreshDevices();
@@ -1243,26 +1254,37 @@ function syncCam() {
   camOut.forEach((c, id) => { if (!ids.has(id)) { c.close(); camOut.delete(id); } });
   ids.forEach(id => {
     if (camOut.has(id)) return;
-    const c = peer.call(id, myCam, {metadata: {kind: 'cam'}});
+    const br = camRate();
+    const c = peer.call(id, myCam, {metadata: {kind: 'cam', br}, sdpTransform: s => boost(pref(s, S.codec), br)});
     if (!c) return;
     camOut.set(id, c);
     c.on('close', () => { if (camOut.get(id) === c) camOut.delete(id); if (myCam) setTimeout(syncCam, 2000); });
-    [800, 3000].forEach(t => setTimeout(() => tuneCam(c), t));
+    [800, 3000, 8000].forEach(t => setTimeout(() => tuneCam(c), t));
   });
+}
+/* taxa de bits para a câmera chegar do jeito que ela filma: ~6 Mbps em 1080p30, ~3 Mbps em 720p30 */
+function camRate() {
+  const st = myCam && myCam.getVideoTracks()[0] ? myCam.getVideoTracks()[0].getSettings() : {};
+  const w = st.width || 1280, h = st.height || 720, f = Math.min(st.frameRate || 30, 60);
+  return Math.max(1.5, Math.min(8, Math.round(w * h * f / 1e6 * .1 * 10) / 10));
 }
 function tuneCam(c) {
   const pc = c.peerConnection; if (!pc) return;
   pc.getSenders().forEach(async s => {
     if (!s.track || s.track.kind !== 'video') return;
     const p = s.getParameters(); if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-    p.encodings[0].maxBitrate = 1.2e6; p.encodings[0].maxFramerate = 30;
+    const st = s.track.getSettings();
+    p.encodings[0].maxBitrate = camRate() * 1e6; p.encodings[0].maxFramerate = Math.round(st.frameRate || 30);
+    p.encodings[0].scaleResolutionDownBy = 1; p.encodings[0].networkPriority = 'high'; p.encodings[0].priority = 'high';
+    p.degradationPreference = 'maintain-resolution';
     try { await s.setParameters(p); } catch (e) {}
   });
 }
 function onCamCall(c) {
   const old = cams.get(c.peer); if (old && old.call && old.call !== c) old.call.close();
   const e = {call: c, stream: null}; cams.set(c.peer, e);
-  c.answer(undefined);
+  /* a resposta também leva o limite de banda: sem isso o navegador de quem filma começa em ~300 kbps e sobe devagar */
+  c.answer(undefined, {sdpTransform: s => boost(s, (c.metadata && c.metadata.br) || 6)});
   c.on('stream', s => { if (cams.get(c.peer) !== e) return; e.stream = s; render(); });
   c.on('close', () => { if (cams.get(c.peer) === e) { cams.delete(c.peer); render(); } });
 }
@@ -1535,6 +1557,8 @@ let copyT;
 async function copyLink() {
   const el = $('#link');
   if (!/^https?:/.test(el.value)) return toast('O link ainda está sendo gerado. Tente em alguns segundos.', 'info');
+  /* no celular abre o menu de compartilhar do sistema (WhatsApp, Telegram…) */
+  if (matchMedia('(hover:none)').matches && navigator.share) { try { await navigator.share({title: document.title, text: 'Vem assistir comigo no Cineminha', url: el.value}); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
   try { await navigator.clipboard.writeText(el.value); } catch (e) { el.select(); document.execCommand('copy'); }
   const b = $('#copy'); b.classList.add('done'); $('#copyT').textContent = 'Copiado';
   clearTimeout(copyT); copyT = setTimeout(() => { b.classList.remove('done'); $('#copyT').textContent = 'Copiar link'; }, 1800);
@@ -1611,3 +1635,5 @@ $('#nf').onsubmit = e => {
 };
 addEventListener('resize', moveInd);
 requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('booting')));
+
+addEventListener('popstate', () => { if (narrow()) document.body.classList.add('nochat'); });

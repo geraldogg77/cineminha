@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=29">
+<link rel="stylesheet" href="styles.css?v=30">
 </head>
 <body class="booting">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -95,7 +95,7 @@
   <h1 id="roomT">Sala</h1><span class="badge" id="badge"><i></i><span id="badgeT">offline</span></span>
   <span class="sp"></span><small id="count"></small>
   <button class="ibtn t" data-act="invite" data-tip="Copiar link do convite" aria-label="Copiar link do convite"><svg class="i"><use href="#i-userplus"/></svg></button>
-  <button class="ibtn t" data-act="chat" data-tip="Mostrar ou ocultar chat" data-kbd="C" aria-label="Mostrar ou ocultar chat"><svg class="i"><use href="#i-chat"/></svg></button>
+  <button class="ibtn t chatB" data-act="chat" data-tip="Mostrar ou ocultar chat" data-kbd="C" aria-label="Mostrar ou ocultar chat"><svg class="i"><use href="#i-chat"/></svg></button>
   <button class="ibtn t" data-act="settings" data-tip="Configurações" aria-label="Configurações"><svg class="i"><use href="#i-cfg"/></svg></button>
  </header>
  <div class="upd" id="upd" hidden role="status"><svg class="i"><use href="#i-info"/></svg><span>Há uma versão nova do Cineminha.</span><button type="button" class="btn sm go" id="updB">Recarregar</button></div>
@@ -137,7 +137,7 @@
    </section>
   </div>
   <aside class="chat" aria-label="Chat">
-   <div class="chathead">Chat <small id="chatCount"></small></div>
+   <div class="chathead">Chat <small id="chatCount"></small><button type="button" class="ibtn chatX" id="chatX" aria-label="Fechar chat"><svg class="i"><use href="#i-x"/></svg></button></div>
    <div class="msgs" id="msgs" aria-live="polite"><div class="empty" id="chatEmpty"><svg class="i"><use href="#i-chat"/></svg><b>Nenhuma mensagem ainda</b><span>Diga oi para quem está na sala.</span></div></div>
    <form class="in" id="f"><input id="mi" placeholder="Escreva uma mensagem" maxlength="500" autocomplete="off" aria-label="Mensagem"><button class="send" id="sendB" aria-label="Enviar" disabled><svg class="i"><use href="#i-send"/></svg></button></form>
   </aside>
@@ -250,6 +250,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="app.js?v=29"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>
