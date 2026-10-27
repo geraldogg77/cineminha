@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /helper/
+Disallow: /worker/
+Disallow: /download/
+
+Sitemap: https://cineminha.online/sitemap.xml

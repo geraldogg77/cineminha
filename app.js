@@ -2,6 +2,8 @@
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const badge = $('#badge'), stage = $('#stage'), root = document.documentElement;
 const target = new URLSearchParams(location.search).get('v');
+/* link de sala não entra no Google: só a página inicial */
+if (target) { const r = document.querySelector('meta[name=robots]'); if (r) r.content = 'noindex, follow'; }
 const isHost = !target;
 document.body.classList.add(isHost ? 'host' : 'viewer');
 /* Endereço do Worker que gera credenciais TURN temporárias (pasta worker/).
