@@ -573,6 +573,10 @@ body:not(.watching) .theirs{display:none!important}
 
 .app.stale .nm::after{content:" · sem som chegando";color:var(--warn);font-weight:400;font-size:12px}
 
+.upd{display:flex;align-items:center;gap:10px;margin:12px 20px 0;padding:10px 12px 10px 14px;border-radius:var(--r-md);background:var(--accent-soft);color:var(--head);box-shadow:0 0 0 1px var(--accent-line) inset;font-weight:500;animation:rise var(--t3) var(--ease)}
+.upd .i{color:var(--accent)}
+.upd span{flex:1}
+
 /* ---------- Modo cinema ---------- */
 body.theater{grid-template-columns:minmax(0,1fr)}
 body.theater .rail,body.theater .side{display:none}

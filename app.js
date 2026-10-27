@@ -68,9 +68,10 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024;
+const APP_VER = 26;   // igual ao ?v= do app.js no index.html
+const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → endereço da foto
-const avUrl = {}, avType = {}, avThumb = {};  // hash → endereço, tipo, miniatura estática
+const avUrl = {}, avType = {}, avThumb = {}, avData = {};  // hash → endereço, tipo, miniatura estática, texto (versão antiga)
 let myAv = '', myAvH = '';
 const okH = h => typeof h === 'string' && /^[0-9a-f]{32}$/.test(h) ? h : '';
 const IDB = (() => {
@@ -92,6 +93,8 @@ function sniff(buf) {
 function avRegister(h, buf, type) {
   if (avUrl[h]) return avUrl[h];
   avType[h] = type; avUrl[h] = URL.createObjectURL(new Blob([buf], {type}));
+  /* quem ainda está na versão antiga do site só entende a foto como texto, até 600 KB */
+  if (buf.byteLength <= AV_LEGACY) { const fr = new FileReader(); fr.onload = () => { avData[h] = fr.result; }; fr.readAsDataURL(new Blob([buf], {type})); }
   /* miniatura estática para o fundo desfocado dos quadrados: borrar um GIF animado grande pesa no computador */
   const img = new Image();
   img.onload = () => {
@@ -132,11 +135,22 @@ async function loadAvatar(file) {
     return {buf: await blob.arrayBuffer(), type: blob.type || 'image/webp'};
   } finally { URL.revokeObjectURL(url); }
 }
+/* foto que chegou de alguém na versão antiga (texto data:image) */
+const legacyH = {};
+async function avFromData(str) {
+  if (typeof str !== 'string' || str.length > 900000 || !/^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(str)) return '';
+  const key = str.length + ':' + str.slice(-64);
+  if (legacyH[key]) return legacyH[key];
+  try {
+    const buf = await (await fetch(str)).arrayBuffer(), type = sniff(buf); if (!type) return '';
+    const h = await sha(buf); avRegister(h, buf, type); legacyH[key] = h; return h;
+  } catch (e) { return ''; }
+}
 async function useMine(buf, type, announce) {
   const h = await sha(buf);
   myAvH = h; myAv = avRegister(h, buf, type);
   avRefresh();
-  if (announce && me) toRoom({t: 'profile', avh: h});
+  if (announce && me) setTimeout(() => toRoom({t: 'profile', avh: h, av: avData[h] || '', ver: APP_VER}), 50);
 }
 async function setAv(rec) {
   if (!rec) {
@@ -164,7 +178,7 @@ async function setAv(rec) {
 })();
 
 /* ---------- Troca das fotos pela sala ---------- */
-const avWant = new Set(), avIn = {}, avWait = {}, avAsked = new Set();
+const avWant = new Map(), avIn = {}, avWait = {}, avAsked = new Set();  // avWant: hash → quando pedi
 async function avSave(h, buf, type) {
   await IDB.set('h:' + h, {buf, type});
   const list = ((await IDB.get('idx')) || []).filter(x => x.h !== h);
@@ -185,7 +199,7 @@ async function avNeedAll() {
   for (const u of lastList) {
     const h = okH(u.avh);
     if (!h || avUrl[h] || avWant.has(h)) continue;
-    avWant.add(h);
+    avWant.set(h, Date.now());
     if (await avCached(h)) { avWant.delete(h); avRefresh(); continue; }
     toRoom({t: 'avget', h});
   }
@@ -220,6 +234,8 @@ async function avRecv(d) {
 setInterval(() => {
   const now = Date.now();
   Object.keys(avIn).forEach(h => { if (now - (avIn[h].at || now) > 30000) { delete avIn[h]; avWant.delete(h); } });
+  /* pedido que ninguém respondeu: pede de novo */
+  avWant.forEach((t, h) => { if (!avIn[h] && now - t > 12000) avWant.delete(h); });
   if (roomReady) avNeedAll();
 }, 5000);
 
@@ -865,6 +881,28 @@ $('#appDl').addEventListener('click', () => { $('#appGetH').hidden = false; help
 $('#appDl2').addEventListener('click', () => { toast('Antes de abrir o arquivo novo, feche o atual: ícone azul perto do relógio › Sair.', 'info'); helperPoll(180000); });
 $('#appConn').onclick = () => { $('#appGetH').hidden = false; helperConnect(true); helperPoll(60000); };
 
+/* ---------- Versão do site ---------- */
+const oldWarned = new Set();
+function showUpdate() { $('#upd').hidden = false; }
+$('#updB').onclick = () => location.reload();
+function checkVersions() {
+  lastList.forEach(u => {
+    if (u.id === myId) return;
+    const v = +u.ver || 0;
+    if (v > APP_VER) showUpdate();
+    else if (v < APP_VER && !oldWarned.has(u.id)) { oldWarned.add(u.id); toast(u.name + ' está com uma versão antiga do Cineminha. Peça para recarregar a página.', 'info'); }
+  });
+}
+/* confere de tempos em tempos se saiu uma versão nova do site */
+async function checkDeploy() {
+  try {
+    const t = await (await fetch(location.pathname + '?_=' + Date.now(), {cache: 'no-store'})).text(), m = t.match(/app\.js\?v=(\d+)/);
+    if (m && +m[1] > APP_VER) showUpdate();
+  } catch (e) {}
+}
+setInterval(checkDeploy, 180000);
+addEventListener('focus', () => checkDeploy());
+
 /* ---------- Chat ---------- */
 let lastAuthor = null;
 function addMsg(m) {
@@ -1230,6 +1268,8 @@ function onMsg(d) {
   else if (d.t === 'users') {
     const firstReady = !roomReady;
     lastList = Array.isArray(d.list) ? d.list : []; roomReady = true;
+    lastList.forEach(u => { if (!okH(u.avh) && u.av) avFromData(u.av).then(h => { const x = byId(u.id); if (h && x && !x.avh) { x.avh = h; avRefresh(); } }); });
+    checkVersions();
     if (firstReady && S.mxMic && !VO.on) voiceMic();
     const ids = new Set(lastList.map(u => u.id)); [...outCalls.keys()].forEach(id => { if (!ids.has(id)) closeOut(id); });
     renderMembers(); reconcile(); syncVoice(); syncCam(); avNeedAll();
@@ -1246,19 +1286,25 @@ const deliver = (id, m) => { if (id === myId) return onMsg(m); const g = guests.
 function post(m) { m.t = 'msg'; addMsg(m); bcast(m); }
 function sys(text) { const m = {t: 'sys', text}; addMsg(m); bcast(m); }
 function users() {
-  const list = [{id: myId, name: me, host: true, avh: myAvH, live: !!stream, mic: VO.on, cam: !!myCam}];
-  guests.forEach((g, id) => g.name && list.push({id, name: g.name, avh: g.avh, live: !!g.live, mic: !!g.mic, cam: !!g.cam}));
+  const old = [...guests.values()].some(g => g.name && !g.ver);
+  const list = [{id: myId, name: me, host: true, ver: APP_VER, av: old ? avData[myAvH] || '' : '', avh: myAvH, live: !!stream, mic: VO.on, cam: !!myCam}];
+  guests.forEach((g, id) => g.name && list.push({id, name: g.name, ver: g.ver || 0, av: old && g.avh ? avData[g.avh] || '' : '', avh: g.avh, live: !!g.live, mic: !!g.mic, cam: !!g.cam}));
   bcast({t: 'users', list}); onMsg({t: 'users', list});
+}
+/* convidado na versão antiga manda a foto como texto: converte para o formato novo */
+function legacyIn(g, from, d) {
+  if (g.avh || !d.av) return;
+  avFromData(d.av).then(h => { if (h && guests.get(from) === g && !g.avh) { g.avh = h; users(); } });
 }
 function onRoom(from, d) {
   const g = from === myId ? null : guests.get(from);
   if (!d || (from !== myId && !g)) return;
   const name = g ? g.name || 'Convidado' : me;
   if (d.t === 'hello' && g) {
-    const fresh = !g.name; g.name = clean(d.name) || 'Convidado'; g.avh = okH(d.avh); g.live = !!d.live; g.mic = !!d.mic; g.cam = !!d.cam;
+    const fresh = !g.name; g.name = clean(d.name) || 'Convidado'; g.avh = okH(d.avh); g.ver = +d.ver || 0; legacyIn(g, from, d); g.live = !!d.live; g.mic = !!d.mic; g.cam = !!d.cam;
     if (fresh) sys(g.name + ' entrou na sala'); users();
   }
-  else if (d.t === 'profile') { if (g) g.avh = okH(d.avh); users(); }
+  else if (d.t === 'profile') { if (g) { g.avh = okH(d.avh); if (d.ver) g.ver = +d.ver; legacyIn(g, from, d); } users(); }
   else if (d.t === 'avget') {
     const h = okH(d.h); if (!h) return;
     if (avUrl[h]) { if (g) avSend(g.conn, h); return; }
@@ -1328,7 +1374,7 @@ function connect() {
   if (hostConn && hostConn.open) return;
   const c = peer.connect(target, {reliable: true}); hostConn = c;
   if (!c) return retry(3000);
-  c.on('open', () => { if (hostConn !== c) return; c.send({t: 'hello', name: me, avh: myAvH, live: !!stream, mic: VO.on, cam: !!myCam}); setStatus('Conectado', 'Carregando a sala…'); });
+  c.on('open', () => { if (hostConn !== c) return; c.send({t: 'hello', name: me, ver: APP_VER, av: avData[myAvH] || '', avh: myAvH, live: !!stream, mic: VO.on, cam: !!myCam}); setStatus('Conectado', 'Carregando a sala…'); });
   c.on('data', d => { if (hostConn === c) onMsg(d); });
   c.on('close', () => {
     if (hostConn !== c || full) return;
