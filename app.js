@@ -83,7 +83,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 30;   // igual ao ?v= do app.js no index.html
+const APP_VER = 31;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -280,14 +280,16 @@ setInterval(() => {
 
 /* ---------- Toasts ---------- */
 const TI = {ok: 'check', err: 'alert', info: 'info'};
-function toast(m, kind = 'info') {
+function toast(m, kind = 'info', action) {
   const box = $('#toasts'), t = document.createElement('div');
-  t.className = 'toast ' + kind;
-  t.innerHTML = '<svg class="i"><use href="#i-' + TI[kind] + '"/></svg><span></span>';
+  t.className = 'toast ' + kind + (action ? ' act' : '');
+  t.innerHTML = '<svg class="i"><use href="#i-' + (TI[kind] || 'info') + '"/></svg><span></span>';
   t.querySelector('span').textContent = m;
+  const out = () => { t.classList.add('out'); setTimeout(() => t.remove(), 220); };
+  if (action) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn sm go'; b.textContent = action.label; b.onclick = () => { action.fn(); out(); }; t.append(b); }
   box.append(t);
   while (box.children.length > 3) box.firstChild.remove();
-  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 220); }, 2800);
+  setTimeout(out, action ? 8000 : 2800);
 }
 
 /* ---------- Tooltips (um único balão, posicionado fora de áreas com overflow) ---------- */
@@ -444,9 +446,10 @@ $('#menuB').onclick = () => nav(true);
 $('#sideScrim').onclick = () => nav(false);
 
 /* ---------- Diálogo de confirmação ---------- */
-function ask(title, desc, yes) {
+function ask(title, desc, yes, no, kind) {
   return new Promise(res => {
     const m = $('#confirm'); $('#cfT').textContent = title; $('#cfD').textContent = desc; $('#cfYes').textContent = yes;
+    $('#cfNo').textContent = no || 'Cancelar'; $('#cfYes').className = 'btn ' + (kind || 'danger');
     m.hidden = false; m.classList.remove('out'); $('#cfNo').focus();
     const done = v => { m.classList.add('out'); setTimeout(() => { m.hidden = true; }, 200); document.removeEventListener('keydown', esc, true); res(v); };
     const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } };
@@ -489,6 +492,7 @@ const act = {
   settings: () => { nav(false); showPane($('.tab.on') ? $('.tab.on').dataset.p : 'p-tx'); drawer(true); },
   mixer: () => { nav(false); showPane('p-tx'); drawer(true); setTimeout(() => $('#mixSec').scrollIntoView({behavior: 'smooth', block: 'start'}), 120); },
   mic: () => {
+    if (!S.mxMic && !canSpeak()) return;
     S.mxMic = !S.mxMic; save(); sync(); mixChanged('mxMic');
     $$('.micB').forEach(b => { b.classList.add('flip'); setTimeout(() => b.classList.remove('flip'), 160); });
     toast(S.mxMic ? 'Microfone ligado: todos na sala ouvem você' : 'Microfone desligado', S.mxMic ? 'ok' : 'info');
@@ -500,6 +504,14 @@ const act = {
     if (!v) return toast('Ninguém está transmitindo a tela agora.', 'info');
     v.requestPictureInPicture ? v.requestPictureInPicture().catch(() => toast('Imagem sobre imagem indisponível agora.', 'err')) : toast('Seu navegador não suporta imagem sobre imagem.', 'err');
   },
+  stage: () => { nav(false); if (isHost) stageSet(!STG.on); },
+  hand: () => {
+    const u = byId(myId); if (!STG.on || !u || u.spk) return;
+    const on = !u.hand; toRoom({t: 'hand', on}); u.hand = on ? Date.now() : 0; paintStage();
+    toast(on ? 'Mão levantada: o anfitrião vai ver seu pedido para falar' : 'Mão abaixada', on ? 'ok' : 'info');
+  },
+  leaveStage: () => { if (STG.on && !isHost) { toRoom({t: 'spk', on: false}); } },
+  react: () => openEmo($('.callbar .reactB'), e => sendFx(e)),
   deaf: () => { deaf = !deaf; paintDeaf(); toast(deaf ? 'Som da sala desligado: você não ouve vozes nem telas' : 'Som da sala ligado', deaf ? 'info' : 'ok'); },
   mute: () => { wantMuted = !wantMuted; soundOk = true; if (!wantMuted && scrVol === 0) scrVol = 1; $('#sound').hidden = true; applyMute(); syncVol(); },
   cam: () => {
@@ -670,6 +682,7 @@ const VO = {dest: null, out: new Map(), inc: new Map(), on: false};
 const vMuted = new Set();
 async function voiceMic() {
   if (!S.mxMic) { stopVoice(); return; }
+  if (!canSpeak()) { S.mxMic = false; save(); sync(); return; }
   if (!me || !navigator.mediaDevices) return;
   try {
     const ms = await navigator.mediaDevices.getUserMedia({audio: {deviceId: S.micDev ? {exact: S.micDev} : undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1}});
@@ -1001,6 +1014,18 @@ function addMsg(m) {
     const tm = d.querySelector('time'), dt = new Date(m.ts);
     tm.textContent = dt.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}); tm.dateTime = dt.toISOString();
     d.querySelector('p').textContent = m.text;
+    /* mensagem só de emojis aparece grande, como no Discord */
+    if (/^(\p{Extended_Pictographic}|\p{Emoji_Component}|\u200d|\ufe0f|\s){1,12}$/u.test(m.text) && /\p{Extended_Pictographic}/u.test(m.text)) d.querySelector('p').classList.add('jumbo');
+    if (m.id) {
+      d.dataset.mid = m.id;
+      const rx = document.createElement('div'); rx.className = 'rx'; d.lastElementChild.append(rx);
+      const add = document.createElement('button'); add.type = 'button'; add.className = 'rxadd'; add.setAttribute('aria-label', 'Reagir à mensagem');
+      add.innerHTML = '<svg class="i"><use href="#i-smile"/></svg><svg class="i pl"><use href="#i-plus"/></svg>';
+      add.onclick = e => { e.stopPropagation(); openEmo(add, em => toRoom({t: 'react', mid: m.id, e: em})); };
+      d.append(add);
+      /* no toque: tocar na mensagem mostra o botão de reagir */
+      d.addEventListener('click', e => { if (matchMedia('(hover:none)').matches && !e.target.closest('.rx,.rxadd')) { $$('.msg.sel').forEach(x => x !== d && x.classList.remove('sel')); d.classList.toggle('sel'); } });
+    }
     lastAuthor = {name: m.name, ts: m.ts};
     $('#chatEmpty').hidden = true;
     const hiddenChat = document.body.classList.contains('nochat') || document.body.classList.contains('theater');
@@ -1028,7 +1053,13 @@ function renderMembers() {
   list.forEach(u => { u.avh = okH(u.avh); if (u.avh && avUrl[u.avh]) avatars[u.name] = u.avh; else delete avatars[u.name]; });
   const el = $('#members'), known = new Set([...el.children].map(c => c.dataset.id));
   el.textContent = '';
-  list.forEach(u => {
+  const ord = STG.on ? [...list.filter(onStage), ...list.filter(u => !onStage(u)).sort((a, b) => (b.hand ? 1 : 0) - (a.hand ? 1 : 0) || (a.hand || 0) - (b.hand || 0))] : list;
+  let grp = null;
+  ord.forEach(u => {
+    if (STG.on) {
+      const g = onStage(u) ? 'spk' : 'aud';
+      if (g !== grp) { grp = g; const c = document.createElement('div'); c.className = 'cat sub'; const n = list.filter(x => onStage(x) === (g === 'spk')).length; c.textContent = (g === 'spk' ? 'No palco, ' : 'Plateia, ') + n; el.append(c); }
+    }
     const r = document.createElement('div'), mine = u.id === myId, can = u.live && !mine;
     r.className = 'mem' + (can ? ' can' : '') + (can && focus === u.id ? ' cur' : ''); r.dataset.id = u.id;
     if (known.has(u.id)) r.style.animation = 'none';
@@ -1036,13 +1067,21 @@ function renderMembers() {
       + (can ? '<span class="watch"></span>' : '') + (u.cam ? '<svg class="i"><use href="#i-cam"/></svg>' : '') + (u.mic && mine ? '<svg class="i"><use href="#i-mic"/></svg>' : '') + '</span>';
     avatar(r.querySelector('.av'), u.name); r.querySelector('b').textContent = u.name + (mine ? ' (você)' : '');
     const sm = r.querySelector('small');
-    sm.textContent = u.live ? (mine ? 'Transmitindo sua tela' : 'Transmitindo agora') : u.cam ? 'Câmera ligada' : u.host ? 'Anfitrião' : 'Na sala';
+    sm.textContent = u.live ? (mine ? 'Transmitindo sua tela' : 'Transmitindo agora') : u.cam ? 'Câmera ligada' : u.host ? 'Anfitrião' : STG.on ? (onStage(u) ? 'No palco' : u.hand ? 'Pediu para falar' : 'Na plateia') : 'Na sala';
     sm.classList.toggle('live', !!u.live);
     if (can) {
       r.querySelector('.watch').textContent = focus === u.id ? 'Na tela' : 'Ampliar';
       r.tabIndex = 0; r.setAttribute('role', 'button'); r.setAttribute('aria-label', 'Ampliar a tela de ' + u.name);
       r.onclick = () => { nav(false); setFocus(focus === u.id ? null : u.id); };
       r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); r.click(); } };
+    }
+    if (STG.on && u.hand && !onStage(u)) { const h = document.createElement('span'); h.className = 'handic'; h.innerHTML = '<svg class="i"><use href="#i-hand"/></svg>'; h.title = 'Pediu para falar'; r.querySelector('.vic').prepend(h); }
+    if (isHost && STG.on && !mine) {
+      const sp = onStage(u), b = document.createElement('button'); b.type = 'button'; b.className = 'ibtn vmute stgmv';
+      b.innerHTML = '<svg class="i"><use href="#i-' + (sp ? 'down' : 'up') + '"/></svg>';
+      b.dataset.tip = sp ? 'Mover para a plateia' : u.hand ? 'Aceitar: subir ao palco' : 'Convidar para o palco'; b.setAttribute('aria-label', b.dataset.tip + ': ' + u.name);
+      b.onclick = e => { e.stopPropagation(); sp ? stageMove(u.id, false) : stageInvite(u.id); };
+      r.querySelector('.vic').append(b);
     }
     if (!mine && (u.mic || vMuted.has(u.id))) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'ibtn vmute';
@@ -1086,7 +1125,7 @@ function makeTile(u) {
   t.innerHTML = '<div class="bg"></div><div class="face"><div class="av"></div><small class="tload">Carregando a tela…</small></div>'
     + '<video class="sv" autoplay playsinline muted></video><video class="cv" autoplay playsinline muted></video>'
     + '<span class="tlive" hidden><i></i>ao vivo</span>'
-    + '<div class="ttools"><button type="button" class="tfoc"><svg class="i"><use href="#i-expand"/></svg></button><button type="button" class="tfs" aria-label="Tela cheia"><svg class="i"><use href="#i-max"/></svg></button></div>'
+    + '<div class="ttools"><button type="button" class="tdown" aria-label="Mover para a plateia" data-tip="Mover para a plateia" hidden><svg class="i"><use href="#i-down"/></svg></button><button type="button" class="tfoc"><svg class="i"><use href="#i-expand"/></svg></button><button type="button" class="tfs" aria-label="Tela cheia"><svg class="i"><use href="#i-max"/></svg></button></div>'
     + '<div class="ttag"><svg class="i moff"><use href="#i-micoff"/></svg><b></b></div>';
   const R = {el: t, id: u.id, sv: t.querySelector('.sv'), cv: t.querySelector('.cv'), av: t.querySelector('.face .av'), bg: t.querySelector('.bg'),
     tag: t.querySelector('.ttag b'), moff: t.querySelector('.moff'), live: t.querySelector('.tlive'), foc: t.querySelector('.tfoc')};
@@ -1096,13 +1135,11 @@ function makeTile(u) {
   t.addEventListener('keydown', e => { if (e.target === t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(); } });
   R.foc.onclick = toggle;
   t.querySelector('.tfs').onclick = () => tileFs(R);
+  t.querySelector('.tdown').onclick = () => stageMove(u.id, false);
   grid.append(t); enterAnim(t);
   return R;
 }
-function tileFs(R) {
-  if (document.fullscreenElement) return document.exitFullscreen();
-  R.el.requestFullscreen().catch(() => toast('Tela cheia indisponível neste navegador.', 'err'));
-}
+var tileFs = R => { if (document.fullscreenElement) return document.exitFullscreen(); R.el.requestFullscreen().catch(() => toast('Tela cheia indisponível neste navegador.', 'err')); };
 function paintTile(R, u) {
   const mine = u.id === myId, s = screenOf(u.id), c = camOf(u.id), f = focus === u.id;
   const cl = R.el.classList;
@@ -1115,6 +1152,7 @@ function paintTile(R, u) {
   R.tag.textContent = mine ? u.name + ' (você)' : u.name;
   R.moff.style.display = u.mic ? 'none' : '';
   R.live.hidden = !u.live;
+  R.el.querySelector('.tdown').hidden = !(isHost && STG.on && !mine);
   R.foc.querySelector('use').setAttribute('href', f ? '#i-apps' : '#i-expand');
   R.foc.setAttribute('aria-label', f ? 'Voltar à grade' : 'Ampliar'); R.foc.dataset.tip = R.foc.getAttribute('aria-label');
   R.el.setAttribute('aria-label', (mine ? 'Você' : u.name) + (u.live ? ', transmitindo a tela' : '') + (u.cam ? ', câmera ligada' : '') + (f ? ', ampliado' : ''));
@@ -1122,7 +1160,7 @@ function paintTile(R, u) {
 function render() {
   const ready = roomReady && lastList.length > 0;
   $('#ph').hidden = ready;
-  const ids = ready ? lastList.map(u => u.id) : [];
+  const ids = ready ? lastList.filter(onStage).map(u => u.id) : [];
   tiles.forEach((R, id) => {
     if (ids.includes(id)) return;
     tiles.delete(id); if (focus === id) focus = null;
@@ -1132,7 +1170,7 @@ function render() {
   ids.forEach(id => { let R = tiles.get(id); if (!R) { R = makeTile(byId(id)); tiles.set(id, R); } paintTile(R, byId(id)); });
   // ordem dos quadrados igual à da lista da sala
   ids.forEach(id => grid.append(tiles.get(id).el));
-  const alone = ready && ids.length === 1;
+  const alone = ready && lastList.length === 1;
   if (alone && !inviteTile) {
     const t = document.createElement('div'); t.className = 'tile invite enter';
     t.innerHTML = '<svg class="i"><use href="#i-userplus"/></svg><b>Só você por aqui</b><span>Envie o link da sala para seus amigos entrarem e assistirem com você.</span><button type="button" class="btn go"><svg class="i"><use href="#i-link"/></svg><span>Copiar convite</span></button>';
@@ -1140,6 +1178,7 @@ function render() {
     grid.append(t); enterAnim(t); inviteTile = t;
   } else if (!alone && inviteTile) { const t = inviteTile; inviteTile = null; t.classList.add('leave'); setTimeout(() => t.remove(), 340); }
   if (inviteTile) grid.append(inviteTile);
+  paintAud();
   layout();
   applyMute(); syncVol(); paintLive();
   const anyAudio = [...scr.values()].some(e => e.stream && e.stream.getAudioTracks().length);
@@ -1224,7 +1263,7 @@ function onCall(c) {
 /* ---------- Câmera ---------- */
 let camBusy = false;
 async function camStart() {
-  if (camBusy || !navigator.mediaDevices) return;
+  if (camBusy || !navigator.mediaDevices || !canSpeak()) return;
   camBusy = true;
   try {
     /* pede o máximo que a câmera entrega (até 1080p 30 fps) */
@@ -1362,12 +1401,16 @@ function onMsg(d) {
   if (!d) return;
   if (d.t === 'full') { full = true; setStatus('Sala cheia', 'Já há ' + d.max + (d.max > 1 ? ' convidados.' : ' convidado.') + ' Peça ao anfitrião para liberar mais vagas.'); }
   else if (d.t === 'msg' || d.t === 'sys') addMsg(d);
+  else if (d.t === 'reacts') paintReacts(d.mid, d.r || {});
+  else if (d.t === 'fx') floatFx(d.e, d.name, d.id === myId);
+  else if (d.t === 'stageinv') stageInvited(d.name);
   else if (d.t === 'users') {
     const firstReady = !roomReady;
     lastList = Array.isArray(d.list) ? d.list : []; roomReady = true;
+    stageSync(!!d.stage);
     lastList.forEach(u => { if (!okH(u.avh) && u.av) avFromData(u.av).then(h => { const x = byId(u.id); if (h && x && !x.avh) { x.avh = h; avRefresh(); } }); });
     checkVersions();
-    if (firstReady && S.mxMic && !VO.on) voiceMic();
+    if (firstReady && S.mxMic && !VO.on && canSpeak(true)) voiceMic();
     const ids = new Set(lastList.map(u => u.id)); [...outCalls.keys()].forEach(id => { if (!ids.has(id)) closeOut(id); });
     renderMembers(); reconcile(); syncVoice(); syncCam(); avNeedAll();
   }
@@ -1380,13 +1423,20 @@ function onMsg(d) {
 /* só no anfitrião: mensagens de qualquer pessoa da sala, inclusive dele mesmo */
 const bcast = m => guests.forEach(g => g.conn.open && g.conn.send(m));
 const deliver = (id, m) => { if (id === myId) return onMsg(m); const g = guests.get(id); if (g && g.conn.open) g.conn.send(m); };
-function post(m) { m.t = 'msg'; addMsg(m); bcast(m); }
+let msgSeq = 0;
+const REACT = new Map();
+function post(m) {
+  m.t = 'msg'; m.id = 'm' + (++msgSeq).toString(36) + Math.random().toString(36).slice(2, 5);
+  REACT.set(m.id, {}); if (REACT.size > 300) REACT.delete(REACT.keys().next().value);
+  addMsg(m); bcast(m);
+}
 function sys(text) { const m = {t: 'sys', text}; addMsg(m); bcast(m); }
 function users() {
   const old = [...guests.values()].some(g => g.name && !g.ver);
-  const list = [{id: myId, name: me, host: true, ver: APP_VER, av: old ? avData[myAvH] || '' : '', avh: myAvH, live: !!stream, mic: VO.on, cam: !!myCam}];
-  guests.forEach((g, id) => g.name && list.push({id, name: g.name, ver: g.ver || 0, av: old && g.avh ? avData[g.avh] || '' : '', avh: g.avh, live: !!g.live, mic: !!g.mic, cam: !!g.cam}));
-  bcast({t: 'users', list}); onMsg({t: 'users', list});
+  const list = [{id: myId, name: me, host: true, ver: APP_VER, av: old ? avData[myAvH] || '' : '', avh: myAvH, live: !!stream, mic: VO.on, cam: !!myCam, spk: true, hand: 0}];
+  guests.forEach((g, id) => g.name && list.push({id, name: g.name, ver: g.ver || 0, av: old && g.avh ? avData[g.avh] || '' : '', avh: g.avh, live: !!g.live, mic: !!g.mic, cam: !!g.cam, spk: !!g.spk, hand: g.hand || 0}));
+  const m = {t: 'users', list, stage: STG.on};
+  bcast(m); onMsg(m);
 }
 /* convidado na versão antiga manda a foto como texto: converte para o formato novo */
 function legacyIn(g, from, d) {
@@ -1412,7 +1462,26 @@ function onRoom(from, d) {
   else if (d.t === 'avc' && g && g.avh === okH(d.h)) avRecv(d);
   else if (d.t === 'voice') { if (g) g.mic = !!d.on; users(); }
   else if (d.t === 'cam') { if (g) g.cam = !!d.on; users(); }
-  else if (d.t === 'msg') { const text = String(d.text || '').trim().slice(0, 500); if (text) post({name, text, ts: Date.now(), host: !g}); }
+  else if (d.t === 'msg') { const text = String(d.text || '').trim().slice(0, 500); if (text) post({name, text, ts: Date.now(), host: !g, uid: from}); }
+  else if (d.t === 'react' && typeof d.mid === 'string' && EMO.includes(d.e)) {
+    const r = REACT.get(d.mid); if (!r) return;
+    const set = r[d.e] || (r[d.e] = new Set());
+    set.has(from) ? set.delete(from) : set.add(from); if (!set.size) delete r[d.e];
+    const m = {t: 'reacts', mid: d.mid, r: Object.fromEntries(Object.entries(r).map(([e, v]) => [e, [...v]]))}; bcast(m); onMsg(m);
+  }
+  else if (d.t === 'fx' && EMO.includes(d.e)) { const now = Date.now(); if (g) { if (now - (g.fxAt || 0) < 250) return; g.fxAt = now; } const m = {t: 'fx', e: d.e, name, id: from}; bcast(m); onMsg(m); }
+  else if (d.t === 'hand') {
+    if (!g || !STG.on || g.spk) return;
+    const on = !!d.on; if (!!g.hand === on) return;
+    g.hand = on ? Date.now() : 0; users();
+    if (on) hostHand(from, name);
+  }
+  else if (d.t === 'spk' && g) {
+    if (d.on) { if (!g.invited && !(STG.on && g.hand && STG.auto)) return; g.invited = false; g.spk = true; g.hand = 0; sys(name + ' subiu ao palco'); }
+    else { if (!g.spk) { g.invited = false; return; } g.spk = false; g.hand = 0; sys(name + ' foi para a plateia'); }
+    users();
+  }
+  else if (d.t === 'spkno' && g) { g.invited = false; toast(name + ' preferiu continuar na plateia', 'info'); }
   else if (d.t === 'live') { const on = !!d.on; if (g) { if (g.live === on) return; g.live = on; } sys(name + (on ? ' começou a transmitir' : ' parou de transmitir')); users(); }
   else if (d.t === 'watch' && typeof d.to === 'string') deliver(d.to, {t: 'watchreq', from, q: d.q === 'lo' ? 'lo' : 'hi', re: !!d.re});
   else if (d.t === 'unwatch' && typeof d.to === 'string') deliver(d.to, {t: 'unwatchreq', from});
@@ -1484,6 +1553,7 @@ function connect() {
 
 /* ---------- Transmitir ---------- */
 async function start() {
+  if (!canSpeak()) return;
   const wantCam = S.src === 'cam', md = navigator.mediaDevices;
   if (!(md && (wantCam ? md.getUserMedia : md.getDisplayMedia))) return toast(wantCam ? 'Este navegador não consegue abrir a câmera.' : 'Este navegador não compartilha a tela. Use Chrome ou Edge no computador.', 'err');
   if (!roomReady) return toast('Aguarde a conexão com a sala para transmitir.', 'info');
@@ -1637,3 +1707,208 @@ addEventListener('resize', moveInd);
 requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('booting')));
 
 addEventListener('popstate', () => { if (narrow()) document.body.classList.add('nochat'); });
+
+
+/* ======================================================================
+   Modo palco (como o Palco do Discord)
+   O anfitrião liga o modo palco. Quem está no palco fala, liga câmera e transmite a tela;
+   a plateia assiste e ouve, e pode levantar a mão para pedir a vez. O anfitrião aceita,
+   convida qualquer pessoa da plateia ou manda alguém de volta para a plateia.
+   ====================================================================== */
+var STG = {on: false, mine: true, was: null};
+var EMO = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉'];
+function onStage(u) { return !STG.on || !!(u && (u.host || u.spk)); }
+function canSpeak(quiet) {
+  if (!STG.on || isHost) return true;
+  const u = byId(myId); if (onStage(u)) return true;
+  if (!quiet) toast('O palco está ativo: levante a mão para pedir a vez de falar.', 'info', u && !u.hand ? {label: 'Levantar a mão', fn: () => act.hand()} : null);
+  return false;
+}
+/* chamado a cada lista da sala: aplica as regras do palco em mim */
+function stageSync(on) {
+  const wasOn = STG.on; STG.on = on;
+  const u = byId(myId), mine = onStage(u);
+  if (on !== wasOn && !isHost) toast(on ? 'O anfitrião ligou o modo palco' + (mine ? '' : ': você está na plateia') : 'Modo palco encerrado: todos podem falar', 'info');
+  if (STG.was !== null && on && wasOn && mine !== STG.was && !isHost) toast(mine ? 'Você subiu ao palco: pode ligar microfone, câmera e tela' : 'Você foi para a plateia', mine ? 'ok' : 'info');
+  STG.was = mine; STG.mine = mine;
+  if (!mine) {
+    if (S.mxMic) { S.mxMic = false; save(); sync(); stopVoice(); }
+    if (myCam) camStop();
+    if (stream) stop();
+  }
+  paintStage();
+}
+function paintStage() {
+  const on = STG.on, u = byId(myId), mine = onStage(u);
+  document.body.classList.toggle('stage-on', on);
+  document.body.classList.toggle('aud-me', on && !mine);
+  document.body.classList.toggle('spk-me', on && mine && !isHost);
+  $$('[data-act=stage]').forEach(b => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); if (b.dataset.tip) b.dataset.tip = on ? 'Encerrar modo palco' : 'Modo palco'; });
+  $('#navStage').hidden = !on;
+  $('#stgBar').hidden = !on;
+  const spk = lastList.filter(onStage).length, aud = lastList.length - spk, hands = lastList.filter(x => !onStage(x) && x.hand).length;
+  $('#stgInfo').textContent = spk + (spk > 1 ? ' falando' : ' falando') + ' · ' + aud + ' na plateia' + (isHost && hands ? ' · ' + hands + (hands > 1 ? ' pedidos' : ' pedido') + ' para falar' : '');
+  const hb = $('.handB'); if (hb) { const up = !!(u && u.hand); hb.classList.toggle('on', up); hb.setAttribute('aria-pressed', up); hb.dataset.tip = up ? 'Abaixar a mão' : 'Levantar a mão para falar'; hb.setAttribute('aria-label', hb.dataset.tip); }
+}
+/* faixa da plateia, embaixo do palco */
+function paintAud() {
+  const box = $('#aud'), l = $('#audL');
+  const aud = STG.on ? lastList.filter(u => !onStage(u)).sort((a, b) => (b.hand ? 1 : 0) - (a.hand ? 1 : 0) || (a.hand || 0) - (b.hand || 0)) : [];
+  box.hidden = !aud.length;
+  if (!aud.length) { l.textContent = ''; return; }
+  $('#audT').textContent = 'Plateia · ' + aud.length;
+  const known = new Set([...l.children].map(c => c.dataset.id));
+  l.textContent = '';
+  aud.forEach(u => {
+    const c = document.createElement(isHost ? 'button' : 'div'); c.className = 'achip' + (u.hand ? ' hand' : '') + (u.id === myId ? ' me' : ''); c.dataset.id = u.id;
+    if (isHost) { c.type = 'button'; c.dataset.tip = u.hand ? 'Aceitar: subir ao palco' : 'Convidar para o palco'; c.onclick = () => stageInvite(u.id); }
+    if (known.has(u.id)) c.style.animation = 'none';
+    c.innerHTML = '<span class="av"></span><span class="an"></span>' + (u.hand ? '<span class="ah"><svg class="i"><use href="#i-hand"/></svg></span>' : '') + (isHost ? '<span class="aok">' + (u.hand ? 'Aceitar' : 'Convidar') + '</span>' : '');
+    avatar(c.querySelector('.av'), u.name); c.querySelector('.an').textContent = u.id === myId ? 'Você' : u.name;
+    l.append(c);
+  });
+}
+/* ----- só no anfitrião ----- */
+function stageSet(on) {
+  if (!isHost) return;
+  if (on === STG.on) return;
+  STG.on = on;
+  guests.forEach(g => {
+    g.hand = 0; g.invited = false;
+    /* ao ligar, quem já está falando, com câmera ou transmitindo continua no palco */
+    g.spk = on ? !!(g.mic || g.cam || g.live) : false;
+  });
+  sys(on ? me + ' ligou o modo palco. Quem está na plateia pode levantar a mão para falar.' : 'Modo palco encerrado. Todos podem falar.');
+  users(); render(); renderMembers();
+  toast(on ? 'Modo palco ligado: só quem está no palco fala' : 'Modo palco desligado', 'ok');
+}
+function hostHand(id, name) {
+  if (!isHost) return;
+  try { const c = mixCtx(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; g.gain.setValueAtTime(.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(.08, c.currentTime + .02); g.gain.exponentialRampToValueAtTime(.0001, c.currentTime + .35); o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime + .4); } catch (e) {}
+  toast(name + ' levantou a mão para falar', 'info', {label: 'Aceitar', fn: () => stageInvite(id)});
+}
+function stageInvite(id) {
+  if (!isHost || !STG.on) return;
+  const g = guests.get(id); if (!g || g.spk) return;
+  if (g.hand) { g.spk = true; g.hand = 0; g.invited = false; sys(g.name + ' subiu ao palco'); users(); return; }
+  g.invited = true; deliver(id, {t: 'stageinv', name: me}); toast('Convite enviado para ' + g.name, 'ok');
+}
+function stageMove(id, up) {
+  if (!isHost || !STG.on) return;
+  if (up) return stageInvite(id);
+  const g = guests.get(id); if (!g || !g.spk) return;
+  g.spk = false; g.hand = 0; sys(g.name + ' foi para a plateia'); users();
+}
+$('#stgEnd').onclick = () => stageSet(false);
+/* ----- na plateia: convite do anfitrião ----- */
+let invOpen = false;
+async function stageInvited(name) {
+  if (invOpen) return; invOpen = true;
+  const yes = await ask('Convite para o palco', (name || 'O anfitrião') + ' convidou você para falar no palco. Lá você pode ligar o microfone, a câmera e transmitir a tela.', 'Subir ao palco', 'Continuar na plateia', 'go');
+  invOpen = false;
+  toRoom(yes ? {t: 'spk', on: true} : {t: 'spkno'});
+}
+
+/* ======================================================================
+   Reações: nas mensagens do chat e flutuando sobre o palco
+   ====================================================================== */
+const emo = $('#emo'); let emoCb = null, emoFrom = null;
+EMO.forEach(e => { const b = document.createElement('button'); b.type = 'button'; b.className = 'emoi'; b.textContent = e; b.setAttribute('role', 'menuitem'); b.setAttribute('aria-label', 'Reagir com ' + e); b.onclick = () => { const cb = emoCb; closeEmo(); if (cb) cb(e); }; emo.append(b); });
+function openEmo(anchor, cb) {
+  if (!anchor) return;
+  if (!emo.hidden && emoFrom === anchor) return closeEmo();
+  emoCb = cb; emoFrom = anchor; emo.hidden = false; emo.classList.remove('in');
+  const r = anchor.getBoundingClientRect(), w = emo.offsetWidth, h = emo.offsetHeight;
+  let x = r.left + r.width / 2 - w / 2, y = r.top - h - 8; if (y < 8) y = r.bottom + 8;
+  x = Math.max(8, Math.min(innerWidth - w - 8, x));
+  emo.style.left = Math.round(x) + 'px'; emo.style.top = Math.round(y) + 'px';
+  requestAnimationFrame(() => emo.classList.add('in'));
+  setTimeout(() => { const f = emo.querySelector('button'); if (f && !matchMedia('(hover:none)').matches) f.focus({preventScroll: true}); }, 30);
+}
+function closeEmo() { emo.hidden = true; emo.classList.remove('in'); emoCb = null; emoFrom = null; }
+document.addEventListener('pointerdown', e => { if (!emo.hidden && !emo.contains(e.target) && !(emoFrom && emoFrom.contains(e.target))) closeEmo(); }, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !emo.hidden) { e.stopPropagation(); const f = emoFrom; closeEmo(); if (f) f.focus(); } }, true);
+emo.addEventListener('keydown', e => {
+  const items = [...emo.children], i = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); items[(i + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length].focus(); }
+});
+addEventListener('resize', closeEmo);
+/* no chat: com texto digitado, o emoji entra na mensagem; sem texto, vai direto como reação grande no chat */
+$('#emoB').onclick = () => openEmo($('#emoB'), e => {
+  const mi = $('#mi');
+  if (mi.value.trim()) { const p = mi.selectionStart ?? mi.value.length; mi.value = mi.value.slice(0, p) + e + mi.value.slice(p); mi.dispatchEvent(new Event('input')); if (!matchMedia('(hover:none)').matches) mi.focus(); return; }
+  if (!toRoom({t: 'msg', text: e})) toast('Sem conexão com a sala agora.', 'err');
+});
+function sendFx(e) { if (!toRoom({t: 'fx', e})) toast('Sem conexão com a sala agora.', 'err'); }
+/* emoji que sobe pelo palco, com o nome de quem mandou */
+let fxCount = 0;
+function floatFx(e, name, mine) {
+  if (!EMO.includes(e)) return;
+  const layer = $('#fx'); if (fxCount > 40) return;
+  const el = document.createElement('div'); el.className = 'fxi';
+  el.innerHTML = '<span class="fe"></span><small></small>';
+  el.querySelector('.fe').textContent = e; el.querySelector('small').textContent = mine ? 'Você' : name || '';
+  el.style.setProperty('--x', (8 + Math.random() * 30).toFixed(1) + '%');
+  el.style.setProperty('--d', (Math.random() * 40 - 20).toFixed(0) + 'px');
+  el.style.setProperty('--r', (Math.random() * 24 - 12).toFixed(0) + 'deg');
+  layer.append(el); fxCount++;
+  setTimeout(() => { el.remove(); fxCount--; }, 3200);
+}
+/* contagem de reações embaixo de cada mensagem */
+function paintReacts(mid, r) {
+  const d = document.querySelector('.msg[data-mid="' + CSS.escape(mid) + '"]'); if (!d) return;
+  const box = d.querySelector('.rx'); if (!box) return;
+  const stick = (() => { const m = $('#msgs'); return m.scrollHeight - m.scrollTop - m.clientHeight < 80; })();
+  const had = new Map([...box.children].map(c => [c.dataset.e, c]));
+  box.textContent = '';
+  EMO.forEach(e => {
+    const who = Array.isArray(r[e]) ? r[e] : []; if (!who.length) return;
+    const b = had.get(e) || document.createElement('button');
+    b.type = 'button'; b.className = 'rxc' + (who.includes(myId) ? ' mine' : '') + (had.has(e) ? '' : ' new'); b.dataset.e = e;
+    b.innerHTML = '<span></span><b></b>'; b.querySelector('span').textContent = e; b.querySelector('b').textContent = who.length;
+    const names = who.map(id => id === myId ? 'você' : (byId(id) || {}).name).filter(Boolean);
+    b.title = names.join(', '); b.setAttribute('aria-label', e + ' ' + who.length + (names.length ? ': ' + names.join(', ') : '') + (who.includes(myId) ? '. Toque para tirar a sua' : '. Toque para reagir também'));
+    b.setAttribute('aria-pressed', who.includes(myId));
+    b.onclick = () => toRoom({t: 'react', mid, e});
+    box.append(b);
+  });
+  if (stick) $('#msgs').scrollTop = $('#msgs').scrollHeight;
+}
+
+/* ======================================================================
+   Tela cheia que funciona também no celular
+   Android: tela cheia do elemento e gira para deitado se o vídeo for horizontal.
+   iPhone: o Safari só deixa o próprio vídeo em tela cheia, então usa o player nativo.
+   ====================================================================== */
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+function fsExit() { (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document); }
+function mainVideo(R) {
+  if (R) return (R.sv.srcObject && R.sv) || (R.cv.srcObject && R.cv) || null;
+  const id = focus && tiles.get(focus) ? focus : [...tiles.keys()].find(x => x !== myId && screenOf(x)) || [...tiles.keys()].find(x => screenOf(x)) || [...tiles.keys()].find(x => camOf(x));
+  const T = id && tiles.get(id); return T ? mainVideo(T) : null;
+}
+async function goFs(el, v) {
+  if (fsEl()) return fsExit();
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (req) {
+    try {
+      await req.call(el, {navigationUI: 'hide'});
+      const vw = v && v.videoWidth, vh = v && v.videoHeight;
+      if (narrow() && screen.orientation && screen.orientation.lock && (!vw || vw >= vh)) screen.orientation.lock('landscape').catch(() => {});
+      return;
+    } catch (e) {}
+  }
+  if (v && v.webkitEnterFullscreen) {
+    try { if (v.paused) await v.play().catch(() => {}); v.webkitEnterFullscreen(); return; } catch (e) {}
+  }
+  toast(v ? 'Tela cheia indisponível neste navegador.' : 'Ninguém está com tela ou câmera ligada para ver em tela cheia.', 'info');
+}
+const onFsChange = () => { if (!fsEl() && screen.orientation && screen.orientation.unlock) { try { screen.orientation.unlock(); } catch (e) {} } setTimeout(layout, 80); };
+document.addEventListener('fullscreenchange', onFsChange); document.addEventListener('webkitfullscreenchange', onFsChange);
+act.fs = () => {
+  const v = mainVideo();
+  /* no celular, a tela cheia vai direto para o vídeo principal; no PC, para o palco inteiro */
+  if (narrow()) { const R = v && [...tiles.values()].find(T => T.sv === v || T.cv === v); return goFs(R ? R.el : stage, v); }
+  goFs(stage, v);
+};
+tileFs = R => goFs(R.el, mainVideo(R));
