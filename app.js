@@ -877,7 +877,7 @@ function paintApps() {
     $('#appsSub').textContent = isWin ? 'Escolha programa por programa' : 'Disponível no Windows 10 e 11';
     $('#appGetT').innerHTML = !isWin ? 'O Cineminha Áudio funciona no <b>Windows 10 e 11</b>. Neste computador, use o som da tela ou a entrada extra.'
       : S.helperSeen ? 'O <b>Cineminha Áudio</b> está desligado. Abra o programa no seu computador para escolher os apps.'
-      : 'Para escolher os apps, como Spotify, Discord e jogos, instale o <b>Cineminha Áudio</b>: um programa de 750 KB para Windows 10 e 11 que fica na bandeja, perto do relógio.';
+      : 'Para escolher os apps, como Spotify, Discord e jogos, instale o <b>Cineminha Áudio</b>: um programa de 650 KB para Windows 10 e 11 que fica na bandeja, perto do relógio.';
     $('#appDl').hidden = !isWin; $('#appConn').hidden = !isWin;
     $('#appDl span').textContent = S.helperSeen ? 'Baixar de novo' : 'Baixar Cineminha Áudio';
     return;
