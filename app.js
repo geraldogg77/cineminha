@@ -83,7 +83,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 28;   // igual ao ?v= do app.js no index.html
+const APP_VER = 29;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -784,7 +784,7 @@ $('#outTest').onclick = () => {
    Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
    O site só tenta conectar depois que a pessoa baixou ou pediu para conectar, para não incomodar quem não usa. */
 const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: '', sig: '', fr: 0, pk: 0};
-const HELPER_LATEST = '1.3.2';
+const HELPER_LATEST = '1.4.0';
 const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.q=[];this.o=0;this.n=0;this.on=false;
 this.port.onmessage=e=>{if(e.data==='reset'){this.q=[];this.o=0;this.n=0;this.on=false;return}this.q.push(e.data);this.n+=e.data.length;
 while(this.n>28800&&this.q.length>1){const d=this.q.shift();this.n-=d.length-this.o;this.o=0}}}
@@ -827,8 +827,8 @@ function helperConnect(loud) {
       return;
     }
     let d; try { d = JSON.parse(e.data); } catch (_) { return; }
-    if (d.t === 'hello') { HP.ver = d.ver || '1.0.0'; paintApps(); }
-    else if (d.t === 'levels') { $$('.app').forEach(r => { const v = d.l && d.l[r.dataset.key]; r.style.setProperty('--al', Math.min(1, (v || 0) * 3.2).toFixed(3)); r.classList.toggle('lv', v != null); r.classList.toggle('stale', !!(d.s && d.s[r.dataset.key] === 'sem dados')); }); }
+    if (d.t === 'hello') { HP.ver = d.ver || '1.0.0'; HP.room = d.room || null; paintApps(); }
+    else if (d.t === 'levels') { $$('.app').forEach(r => { const v = d.l && d.l[r.dataset.key]; r.style.setProperty('--al', Math.min(1, (v || 0) * 3.2).toFixed(3)); r.classList.toggle('lv', v != null); const st = (d.s && d.s[r.dataset.key]) || ''; r.classList.toggle('stale', st === 'sem som' || st === 'sem dados'); appState(r, st); }); }
     else if (d.t === 'apps') {
       HP.apps = Array.isArray(d.list) ? d.list : []; HP.error = d.error || null;
       /* o programa do Windows liga todo app novo por padrão, o que levava o som do computador inteiro.
@@ -858,6 +858,13 @@ const isWin = /Windows/i.test(navigator.userAgent);
 /* o navegador em que a sala está aberta: capturar ele manda a voz e as telas da sala de volta para a transmissão */
 const ownBrowser = navigator.brave ? /[\\/]brave\.exe$/ : /Edg\//.test(navigator.userAgent) ? /[\\/]msedge\.exe$/ : /OPR\//.test(navigator.userAgent) ? /[\\/]opera\.exe$/ : /Firefox\//.test(navigator.userAgent) ? /[\\/]firefox\.exe$/ : /[\\/]chrome\.exe$/;
 const appsOn = () => HP.apps.filter(a => S.appPrefs[a.key] && S.appPrefs[a.key].on).length;
+/* situação ao vivo de cada app marcado, mandada pelo programa */
+const AST = {'bloqueado': 'Fora da transmissão: outro app desmarcado toca por dentro dele', 'falhou': 'Não consegui capturar este app', 'sem som': 'Marcado · sem som agora', 'junto': 'Marcado · vai junto com outro app', 'iniciando': 'Marcado · ligando a captura', 'ok': 'Na transmissão', 'pronto': 'Marcado · entra quando você transmitir'};
+function appState(r, st) {
+  const el = r.querySelector('.ast'); if (!el) return;
+  const t = AST[st] || ''; el.hidden = !t; if (el.textContent !== t) el.textContent = t;
+  el.className = 'ast' + (st ? ' s-' + st.replace(' ', '-') : '');
+}
 function paintApps() {
   const list = $('#appList'), get = $('#appGet'), row = $('.mrow.apps');
   row.classList.toggle('conn', HP.ok);
@@ -870,14 +877,14 @@ function paintApps() {
     $('#appsSub').textContent = isWin ? 'Escolha programa por programa' : 'Disponível no Windows 10 e 11';
     $('#appGetT').innerHTML = !isWin ? 'O Cineminha Áudio funciona no <b>Windows 10 e 11</b>. Neste computador, use o som da tela ou a entrada extra.'
       : S.helperSeen ? 'O <b>Cineminha Áudio</b> está desligado. Abra o programa no seu computador para escolher os apps.'
-      : 'Para escolher os apps, como Spotify, Discord e jogos, instale o <b>Cineminha Áudio</b>: um programa de 650 KB para Windows 10 e 11 que fica na bandeja, perto do relógio.';
+      : 'Para escolher os apps, como Spotify, Discord e jogos, instale o <b>Cineminha Áudio</b>: um programa de 750 KB para Windows 10 e 11 que fica na bandeja, perto do relógio.';
     $('#appDl').hidden = !isWin; $('#appConn').hidden = !isWin;
     $('#appDl span').textContent = S.helperSeen ? 'Baixar de novo' : 'Baixar Cineminha Áudio';
     return;
   }
-  const sig = JSON.stringify([HP.apps.map(a => [a.key, a.name, a.includes, !!(S.appPrefs[a.key] && S.appPrefs[a.key].on)]), HP.error, S.mxScreen && S.mxApps]);
+  const sig = JSON.stringify([HP.apps.map(a => [a.key, a.name, a.includes, a.blocked, a.repeats, a.room, a.err, !!(S.appPrefs[a.key] && S.appPrefs[a.key].on)]), HP.error, S.mxScreen && S.mxApps]);
   if (sig === HP.sig && list.children.length) {
-    $$('.app').forEach(r => { const a = HP.apps.find(x => x.key === r.dataset.key); if (a) { r.classList.toggle('on', !!a.active); r.title = a.name + (a.active ? ' (tocando agora)' : ''); } });
+    $$('.app').forEach(r => { const a = HP.apps.find(x => x.key === r.dataset.key); if (a) { r.classList.toggle('on', !!a.active); r.title = a.name + (a.active ? ' (tocando agora)' : ''); appState(r, a.state); } });
     $('#appsSub').textContent = 'Cineminha Áudio conectado · ' + appsOn() + ' de ' + HP.apps.length + ' apps';
     return;
   }
@@ -892,20 +899,27 @@ function paintApps() {
   HP.apps.forEach(a => {
     const l = document.createElement('label'); l.className = 'app' + (a.active ? ' on' : ''); l.dataset.key = a.key;
     if (known.has(a.key)) l.style.animation = 'none';
-    l.innerHTML = '<input type="checkbox"><span class="box"><svg class="i"><use href="#i-check"/></svg></span>' + (a.icon ? '<img alt="">' : '<span class="ph2"></span>') + '<span class="nmw"><span class="nm"></span><small class="inc" hidden></small></span><span class="play" aria-hidden="true"><i></i><i></i><i></i></span><span class="alvl" title="Som capturado deste app agora"><i></i></span>';
+    l.innerHTML = '<input type="checkbox"><span class="box"><svg class="i"><use href="#i-check"/></svg></span>' + (a.icon ? '<img alt="">' : '<span class="ph2"></span>') + '<span class="nmw"><span class="nm"></span><small class="inc" hidden></small><small class="ast" hidden></small></span><span class="play" aria-hidden="true"><i></i><i></i><i></i></span><span class="alvl" title="Som capturado deste app agora"><i></i></span>';
     const cb = l.querySelector('input'), p = S.appPrefs[a.key];
     cb.checked = !!(p && p.on);
     if (a.icon) l.querySelector('img').src = a.icon; else l.querySelector('.ph2').textContent = (a.name[0] || '?').toUpperCase();
     l.querySelector('.nm').textContent = a.name;
-    const own = ownBrowser.test(a.key), inc = l.querySelector('.inc');
-    if (own) { inc.hidden = false; inc.classList.add('echo'); inc.textContent = 'Este navegador: marcar devolve a voz e as telas da sala para a transmissão (eco)'; }
-    else if (a.includes && a.includes.length) { inc.hidden = false; inc.textContent = 'Leva junto: ' + a.includes.join(', '); }
+    /* o programa 1.4 descobre sozinho qual navegador está com a sala aberta; nas versões antigas, adivinha pelo navegador atual */
+    const own = !!a.room || (!HP.room && ownBrowser.test(a.key)), inc = l.querySelector('.inc'), on = !!(p && p.on);
+    const say = (t, cls) => { inc.hidden = false; inc.textContent = t; if (cls) inc.classList.add(cls); };
+    const list2 = v => v.length > 2 ? v.slice(0, 2).join(', ') + ' e mais ' + (v.length - 2) : v.join(' e ');
+    if (own) say('Navegador desta sala: marcar causa eco (leva as vozes da sala de volta)', 'echo');
+    else if (on && a.blocked && a.blocked.length) say('Fora da transmissão: ' + list2(a.blocked) + ' toca por dentro dele e está desmarcado. Marque também ou feche.', 'echo');
+    else if (on && a.repeats && a.repeats.length) say('Repete o som de ' + list2(a.repeats) + ': o som dele pode vazar por aqui. Desligue o monitoramento de áudio neste app ou desmarque.', 'echo');
+    else if (on && a.err) say(a.err, 'echo');
+    else if (a.includes && a.includes.length) say('Leva junto: ' + list2(a.includes));
     l.title = a.name + (a.active ? ' (tocando agora)' : '');
     cb.onchange = () => {
       S.appPrefs[a.key] = {on: cb.checked, vol: (p && p.vol) || 100}; save(); helperSend({t: 'set', key: a.key, on: cb.checked});
       if (cb.checked && own) toast('Este é o navegador da sala: marcar ele devolve as vozes e as telas da sala para a transmissão e causa eco. Marque só o app que você quer mostrar.', 'info');
       paintApps();
     };
+    appState(l, a.state);
     list.append(l);
   });
   if (HP.apps.some(a => /chrome|msedge|brave|opera|firefox|vivaldi/i.test(a.key))) {

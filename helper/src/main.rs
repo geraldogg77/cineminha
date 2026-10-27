@@ -2,17 +2,27 @@
 //! Fica na bandeja do Windows, lista os apps que estão tocando som e captura só os que a
 //! pessoa marcar no Cineminha. O som mixado vai para a página por um WebSocket local
 //! (127.0.0.1), então nada sai do computador por aqui: quem envia para a sala é o navegador.
+//!
+//! Como a separação funciona (mesmo princípio do win-capture-audio do OBS):
+//!  - captura por processo com a API de loopback de processo do Windows (inclui a árvore do processo);
+//!  - a escolha de quem capturar fica em `cineminha_logic::plan`: nunca captura uma árvore que
+//!    tenha um app desmarcado dentro, então desmarcar sempre tira o som daquele app;
+//!  - cada pacote é posicionado pelo horário em que o Windows o capturou (QPC), com 40 ms de folga;
+//!  - pacotes marcados como silêncio pelo Windows viram silêncio de verdade;
+//!  - apps desmarcados que estão tocando são capturados só para comparação (nunca entram na mistura),
+//!    para descobrir apps que repetem o som de outros (OBS com monitoramento, Radeon, apps de streaming).
 #![windows_subsystem = "windows"]
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use base64::Engine;
+use cineminha_logic as logic;
 use serde::Deserialize;
 use serde_json::json;
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
@@ -21,64 +31,114 @@ use windows::core::{w, Interface, PCWSTR, PWSTR};
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::Media::Audio::*;
+use windows::Win32::NetworkManagement::IpHelper::*;
+use windows::Win32::Networking::WinSock::AF_INET;
 use windows::Win32::Storage::FileSystem::*;
 use windows::Win32::System::Com::*;
 use windows::Win32::System::Diagnostics::ToolHelp::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::Threading::*;
 use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 const PORT: u16 = 47833;
-const RATE: usize = 48000;
-const CH: usize = 2;
-const TICK: usize = RATE / 100; // 10 ms
+const RATE: usize = logic::RATE as usize;
+const CH: usize = logic::CH;
 const SITE: &str = "https://cineminha.online/";
 const ALLOWED: &[&str] = &["https://cineminha.online", "https://www.cineminha.online", "https://cineminha.pages.dev", "https://geraldogg77.github.io"];
+/// captura de um app que saiu da lista continua aberta (em silêncio) por este tempo; voltar é instantâneo
+const GRACE: Duration = Duration::from_secs(15);
 
-/* ---------------- Estado compartilhado ---------------- */
+/* ---------------- Relógio e registro ---------------- */
+
+/// horário do Windows em unidades de 100 ns, o mesmo relógio dos pacotes de áudio
+fn qpc_100ns() -> u64 {
+    unsafe {
+        let (mut f, mut c) = (0i64, 0i64);
+        let _ = QueryPerformanceFrequency(&mut f);
+        let _ = QueryPerformanceCounter(&mut c);
+        ((c as i128) * 10_000_000 / (f.max(1) as i128)) as u64
+    }
+}
+static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+fn up_ms() -> u64 { START.get_or_init(Instant::now).elapsed().as_millis() as u64 }
+static LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
+fn log_path() -> std::path::PathBuf {
+    let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".into());
+    std::path::Path::new(&base).join("CineminhaAudio").join("registro.txt")
+}
+fn log_open() {
+    let p = log_path();
+    if let Some(d) = p.parent() { let _ = std::fs::create_dir_all(d); }
+    *LOG.lock().unwrap() = std::fs::File::create(&p).ok();
+}
+fn log(msg: &str) {
+    use std::io::Write;
+    if let Some(f) = LOG.lock().unwrap().as_mut() {
+        let t = up_ms();
+        let _ = writeln!(f, "[{:>4}:{:02}.{:03}] {}", t / 60000, (t / 1000) % 60, t % 1000, msg);
+        let _ = f.flush();
+    }
+}
+
+/* ---------------- Estado ---------------- */
 
 #[derive(Clone)]
 struct App {
-    key: String,      // caminho do executável em minúsculas
-    name: String,     // nome amigável (descrição do arquivo)
-    icon: String,     // data:image/png;base64,...
-    roots: Vec<u32>,  // processos donos das sessões de áudio (alvos da captura)
-    active: bool,     // tocando agora
-    includes: Vec<String>, // outros apps que entram junto (o Windows captura o app e tudo que ele abriu)
+    key: String,
+    name: String,
+    icon: String,
+    pids: Vec<u32>,
+    active: bool,
 }
 
 struct Pref { on: bool, vol: f32 }
 
 struct Client { tx: Sender<Message>, streaming: Arc<AtomicBool> }
 
+struct Cap {
+    stop: Arc<AtomicBool>,
+    q: Arc<Mutex<VecDeque<(u64, Vec<f32>)>>>,
+    alive: Arc<AtomicBool>,
+    last: Arc<AtomicU64>,
+    packets: Arc<AtomicU64>,
+    silent: Arc<AtomicU64>,
+    err: Arc<Mutex<Option<String>>>,
+    key: String,
+    unused_since: Option<Instant>,
+}
+
 struct State {
     apps: Vec<App>,
+    sessions: Vec<(u32, String, bool)>,
+    table: HashMap<u32, logic::Proc>,
     prefs: HashMap<String, Pref>,
     clients: Vec<Client>,
     caps: HashMap<u32, Cap>,
+    stopping: Vec<(u32, Arc<AtomicBool>)>,
+    gains: HashMap<u32, f32>,
+    plan: logic::Plan,
+    /// apps (caminho do executável) do navegador onde a sala está aberta
+    room: HashSet<String>,
+    /// app → (apps cujo som ele repete, até quando o aviso vale)
+    repeats: HashMap<String, (Vec<String>, Instant)>,
     version: usize,
     error: Option<String>,
-    tree: HashMap<u32, HashSet<u32>>,
-    gains: HashMap<u32, f32>,                 // quem entra na mistura agora e com que volume; o resto fica mudo
-    stopping: Vec<(u32, Arc<AtomicBool>)>,    // capturas que mandei fechar e ainda não terminaram
 }
-
-/// `alive` vira falso quando a thread da captura termina (por erro ou porque mandei parar);
-/// `off_since` marca desde quando o app está desmarcado, para a captura sobreviver a um clique sem querer.
-struct Cap { stop: Arc<AtomicBool>, buf: Arc<Mutex<VecDeque<f32>>>, primed: bool, alive: Arc<AtomicBool>, off_since: Option<Instant> }
-
-/// Quanto tempo a captura de um app desmarcado continua aberta (em silêncio) antes de fechar.
-/// Marcar de novo dentro desse prazo volta na hora, sem recriar a captura.
-const GRACE: Duration = Duration::from_secs(20);
-
 type Shared = Arc<Mutex<State>>;
 static CONNECTED: AtomicUsize = AtomicUsize::new(0);
 
-fn pref_of<'a>(prefs: &'a HashMap<String, Pref>, key: &str) -> (bool, f32) {
-    prefs.get(key).map(|p| (p.on, p.vol)).unwrap_or((true, 1.0))
+/// app que o site nunca marcou fica de fora (o site manda a marcação de cada app assim que vê a lista)
+fn pref_of(prefs: &HashMap<String, Pref>, key: &str) -> (bool, f32) {
+    prefs.get(key).map(|p| (p.on, p.vol)).unwrap_or((false, 1.0))
 }
-
+fn streaming(st: &State) -> bool { st.clients.iter().any(|c| c.streaming.load(Ordering::Relaxed)) }
+fn name_of(st: &State, key: &str) -> String {
+    st.apps.iter().find(|a| a.key == key).map(|a| a.name.clone()).unwrap_or_else(|| {
+        std::path::Path::new(key).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| key.to_string())
+    })
+}
 /* ---------------- Utilidades Win32 ---------------- */
 
 fn wide(s: &str) -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() }
@@ -221,72 +281,64 @@ const SHELL: &[&str] = &["explorer.exe", "sihost.exe", "svchost.exe", "audiodg.e
     "shellexperiencehost.exe", "startmenuexperiencehost.exe", "applicationframehost.exe", "textinputhost.exe",
     "dwm.exe", "winlogon.exe", "services.exe", "taskhostw.exe", "searchhost.exe", "systemsettings.exe"];
 
-/// todos os descendentes de um processo
-fn descendants(pid: u32, table: &HashMap<u32, (u32, String)>) -> HashSet<u32> {
-    let mut out = HashSet::new();
-    let mut stack = vec![pid];
-    while let Some(p) = stack.pop() {
-        for (c, (parent, _)) in table.iter() {
-            if *parent == p && *c != p && out.insert(*c) { stack.push(*c); }
-        }
-    }
-    out
-}
 
-/// Sobe até o processo principal do app: o mesmo programa (mesmo .exe) que está acima na árvore.
-/// O som de apps como o Chrome e o Discord sai de um processo filho que o Windows desliga e recria de tempos
-/// em tempos. Capturar o processo principal (com a árvore dele) mantém a captura valendo mesmo assim,
-/// que é o que o OBS faz ao escolher o app pela janela.
-fn main_process(pid: u32, key: &str, table: &HashMap<u32, (u32, String)>) -> u32 {
-    let mut cur = pid;
-    for _ in 0..8 {
-        let Some(&(parent, _)) = table.get(&cur) else { break };
-        if parent == 0 || parent == cur { break; }
-        match exe_path(parent) {
-            Some(p) if p.to_lowercase() == key => cur = parent,
-            _ => break,
-        }
-    }
-    cur
-}
-
-fn scan_apps(icons: &mut HashMap<String, (String, String)>) -> (Vec<App>, HashMap<u32, HashSet<u32>>) {
+fn scan(icons: &mut HashMap<String, (String, String)>) -> (Vec<App>, Vec<(u32, String, bool)>, HashMap<u32, logic::Proc>) {
     let me = std::process::id();
-    let table = process_table();
+    let raw = process_table();
+    let table: HashMap<u32, logic::Proc> = raw.iter().map(|(&pid, (parent, exe))| (pid, logic::Proc { parent: *parent, exe: exe.clone() })).collect();
     let my_exe = exe_path(me).unwrap_or_default().to_lowercase();
     let mut groups: HashMap<String, App> = HashMap::new();
+    let mut sessions = Vec::new();
     for (pid, active) in audio_sessions() {
-        let exe_name = table.get(&pid).map(|t| t.1.clone()).unwrap_or_default();
+        let exe_name = raw.get(&pid).map(|t| t.1.clone()).unwrap_or_default();
         if SHELL.contains(&exe_name.as_str()) { continue; }
         let Some(path) = exe_path(pid) else { continue };
         let key = path.to_lowercase();
         if key == my_exe { continue; }
-        let root = main_process(pid, &key, &table);
         let (name, icon) = icons.entry(key.clone()).or_insert_with(|| {
             let stem = std::path::Path::new(&path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
             (file_description(&path).unwrap_or(stem), icon_png(&path))
         }).clone();
-        let g = groups.entry(key.clone()).or_insert(App { key, name, icon, roots: vec![], active: false, includes: vec![] });
-        if !g.roots.contains(&root) { g.roots.push(root); }
+        let g = groups.entry(key.clone()).or_insert(App { key: key.clone(), name, icon, pids: vec![], active: false });
+        if !g.pids.contains(&pid) { g.pids.push(pid); }
         g.active |= active;
+        if !sessions.iter().any(|(p, _, _)| *p == pid) { sessions.push((pid, key, active)); }
     }
     let mut apps: Vec<App> = groups.into_values().collect();
-    // quem leva quem junto: o Windows captura o processo e todos os filhos dele
-    let mut tree: HashMap<u32, HashSet<u32>> = HashMap::new();
-    for a in &apps { for r in &a.roots { tree.insert(*r, descendants(*r, &table)); } }
-    let snapshot: Vec<(String, Vec<u32>)> = apps.iter().map(|a| (a.name.clone(), a.roots.clone())).collect();
-    for a in apps.iter_mut() {
-        let mine: HashSet<u32> = a.roots.iter().flat_map(|r| tree.get(r).cloned().unwrap_or_default()).collect();
-        a.includes = snapshot.iter().filter(|(n, roots)| *n != a.name && roots.iter().any(|r| mine.contains(r))).map(|(n, _)| n.clone()).collect();
-    }
     apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    (apps, tree)
+    (apps, sessions, table)
 }
 
+/// situação de cada app para a interface
+fn app_state(st: &State, a: &App) -> (&'static str, Option<String>) {
+    let (on, _) = pref_of(&st.prefs, &a.key);
+    if !on { return ("", None); }
+    if st.plan.blocked.contains_key(&a.key) && !st.plan.mixed.values().any(|(k, _)| k == &a.key) { return ("bloqueado", None); }
+    if !streaming(st) { return ("pronto", None); }
+    let caps: Vec<&Cap> = st.plan.mixed.iter().filter(|(_, (k, _))| k == &a.key).filter_map(|(p, _)| st.caps.get(p)).collect();
+    if caps.is_empty() {
+        // a captura pode estar dentro da de outro app marcado
+        if st.plan.includes.values().any(|v| v.contains(&a.key)) { return ("junto", None); }
+        return ("iniciando", None);
+    }
+    if let Some(e) = caps.iter().find_map(|c| c.err.lock().unwrap().clone()) { if caps.iter().all(|c| !c.alive.load(Ordering::Relaxed)) { return ("falhou", Some(e)); } }
+    let now = up_ms();
+    if caps.iter().any(|c| now.saturating_sub(c.last.load(Ordering::Relaxed)) < 1500) { "ok" } else { "sem som" }.into_pair()
+}
+trait Pair { fn into_pair(self) -> (&'static str, Option<String>); }
+impl Pair for &'static str { fn into_pair(self) -> (&'static str, Option<String>) { (self, None) } }
+
 fn apps_json(st: &State) -> String {
+    let now = Instant::now();
     let list: Vec<_> = st.apps.iter().map(|a| {
         let (on, vol) = pref_of(&st.prefs, &a.key);
-        json!({"key": a.key, "name": a.name, "icon": a.icon, "active": a.active, "on": on, "vol": (vol * 100.0).round(), "includes": a.includes})
+        let (state, err) = app_state(st, a);
+        let names = |v: &Vec<String>| v.iter().map(|k| name_of(st, k)).collect::<Vec<_>>();
+        let blocked = st.plan.blocked.get(&a.key).map(names).unwrap_or_default();
+        let includes = st.plan.includes.get(&a.key).map(names).unwrap_or_default();
+        let repeats = st.repeats.get(&a.key).filter(|(_, t)| *t > now).map(|(v, _)| names(v)).unwrap_or_default();
+        json!({"key": a.key, "name": a.name, "icon": a.icon, "active": a.active, "on": on, "vol": (vol * 100.0).round(),
+               "includes": includes, "blocked": blocked, "repeats": repeats, "room": st.room.contains(&a.key), "state": state, "err": err})
     }).collect();
     json!({"t": "apps", "list": list, "error": st.error}).to_string()
 }
@@ -295,157 +347,216 @@ fn broadcast_text(st: &mut State, text: String) {
     st.clients.retain(|c| c.tx.send(Message::Text(text.clone().into())).is_ok());
 }
 
-/* ---------------- Captura por app ---------------- */
+/* ---------------- Captura por processo ---------------- */
 
-fn start_capture(pid: u32, shared: Shared) -> Cap {
-    let stop = Arc::new(AtomicBool::new(false));
-    let buf = Arc::new(Mutex::new(VecDeque::with_capacity(RATE * CH / 5)));
-    let alive = Arc::new(AtomicBool::new(true));
-    let (s2, b2, a2) = (stop.clone(), buf.clone(), alive.clone());
+fn start_capture(pid: u32, key: String) -> Cap {
+    let cap = Cap {
+        stop: Arc::new(AtomicBool::new(false)), q: Arc::new(Mutex::new(VecDeque::new())), alive: Arc::new(AtomicBool::new(true)),
+        last: Arc::new(AtomicU64::new(0)), packets: Arc::new(AtomicU64::new(0)), silent: Arc::new(AtomicU64::new(0)),
+        err: Arc::new(Mutex::new(None)), key: key.clone(), unused_since: None,
+    };
+    let (stop, q, alive, last, packets, silent, err) = (cap.stop.clone(), cap.q.clone(), cap.alive.clone(), cap.last.clone(), cap.packets.clone(), cap.silent.clone(), cap.err.clone());
+    log(&format!("captura iniciada: {key} (processo {pid})"));
     thread::spawn(move || {
-        let res = capture_loop(pid, &s2, &b2);
-        a2.store(false, Ordering::Relaxed);
-        if let (Err(e), false) = (res, s2.load(Ordering::Relaxed)) {
-            let msg = format!("{e}");
-            let mut st = shared.lock().unwrap();
-            // só avisa se o app ainda estava na mistura: um app que fechou sozinho não é erro
-            if st.error.is_none() && st.gains.contains_key(&pid) {
-                st.error = Some(if msg.contains("0x80070490") || msg.contains("Activate") {
+        let r = capture_loop(pid, &stop, &q, &last, &packets, &silent);
+        alive.store(false, Ordering::Relaxed);
+        match r {
+            Ok(()) => log(&format!("captura encerrada: {key} (processo {pid})")),
+            Err(e) => {
+                let msg = format!("{e}");
+                log(&format!("captura falhou: {key} (processo {pid}): {msg}"));
+                *err.lock().unwrap() = Some(if msg.contains("0x80070490") || msg.to_lowercase().contains("not found") {
                     "Este Windows não permite capturar o som de um app separado. Atualize para o Windows 11 ou para a versão mais recente do Windows 10.".into()
-                } else { format!("Não foi possível capturar um app: {msg}") });
-                st.version += 1;
+                } else { msg });
             }
         }
     });
-    Cap { stop, buf, primed: false, alive, off_since: None }
+    cap
 }
 
-fn capture_loop(pid: u32, stop: &AtomicBool, buf: &Mutex<VecDeque<f32>>) -> Result<(), Box<dyn std::error::Error>> {
+/// Lê os pacotes do Windows assim que ficam prontos (evento), com um buffer de 1 s para nada se perder
+/// se o computador demorar. Cada pacote vai com o horário em que foi capturado.
+fn capture_loop(pid: u32, stop: &AtomicBool, q: &Mutex<VecDeque<(u64, Vec<f32>)>>, last: &AtomicU64, packets: &AtomicU64, silent: &AtomicU64) -> Result<(), Box<dyn std::error::Error>> {
     let _ = wasapi::initialize_mta();
     let fmt = wasapi::WaveFormat::new(32, 32, &wasapi::SampleType::Float, RATE, CH, None);
     let mut client = wasapi::AudioClient::new_application_loopback_client(pid, true)?;
-    client.initialize_client(&fmt, &wasapi::Direction::Capture, &wasapi::StreamMode::EventsShared { autoconvert: true, buffer_duration_hns: 0 })?;
+    client.initialize_client(&fmt, &wasapi::Direction::Capture, &wasapi::StreamMode::EventsShared { autoconvert: true, buffer_duration_hns: 10_000_000 })?;
     let ev = client.set_get_eventhandle()?;
     let cap = client.get_audiocaptureclient()?;
-    let mut raw: VecDeque<u8> = VecDeque::new();
+    let frame = CH * 4;
+    let mut data = vec![0u8; RATE * frame / 10];
     client.start_stream()?;
     while !stop.load(Ordering::Relaxed) {
-        let _ = ev.wait_for_event(100); // app em silêncio não gera eventos: só segue em frente
-        while let Ok(Some(n)) = cap.get_next_packet_size() {
+        let _ = ev.wait_for_event(200);
+        loop {
+            let n = cap.get_next_packet_size()?.unwrap_or(0) as usize;
             if n == 0 { break; }
-            cap.read_from_device_to_deque(&mut raw)?;
-        }
-        if raw.len() >= 4 {
-            let mut b = buf.lock().unwrap();
-            while raw.len() >= 4 {
-                let s = [raw.pop_front().unwrap(), raw.pop_front().unwrap(), raw.pop_front().unwrap(), raw.pop_front().unwrap()];
-                b.push_back(f32::from_le_bytes(s));
-            }
-            let max = RATE * CH / 4; // no máximo 250 ms guardados
-            while b.len() > max { b.pop_front(); }
+            if data.len() < n * frame { data.resize(n * frame, 0); }
+            let (got, info) = cap.read_from_device(&mut data[..n * frame])?;
+            let got = got as usize;
+            if got == 0 { break; }
+            packets.fetch_add(1, Ordering::Relaxed);
+            last.store(up_ms(), Ordering::Relaxed);
+            // pacote marcado como silêncio: o conteúdo não vale; fica de fora (vira silêncio na mistura)
+            if info.flags.silent { silent.fetch_add(1, Ordering::Relaxed); continue; }
+            let samples: Vec<f32> = data[..got * frame].chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+            let mut g = q.lock().unwrap();
+            g.push_back((info.timestamp, samples));
+            while g.len() > 400 { g.pop_front(); }
         }
     }
     let _ = client.stop_stream();
     Ok(())
 }
 
-/// Liga e desliga capturas conforme o que o site pediu.
-/// Regras que deixam a separação por app estável:
-///  - o volume de quem entra na mistura é decidido aqui (`gains`); desmarcar silencia na hora;
-///  - a captura de um app desmarcado só fecha depois de GRACE, então marcar e desmarcar não recria nada;
-///  - uma captura que caiu (thread terminou) é refeita na próxima passada;
-///  - nunca abre uma captura nova do mesmo app enquanto a anterior ainda está fechando.
-fn manage_captures(shared: &Shared) {
+/// Decide quem capturar a partir das marcações e liga/desliga as capturas.
+fn manage(shared: &Shared) {
     let mut guard = shared.lock().unwrap();
     let st = &mut *guard;
-    let streaming = st.clients.iter().any(|c| c.streaming.load(Ordering::Relaxed));
-    let mut want: HashSet<u32> = HashSet::new();
-    if streaming {
-        for a in &st.apps { if pref_of(&st.prefs, &a.key).0 { want.extend(a.roots.iter().copied()); } }
-        // um alvo que já está dentro da árvore de outro alvo sairia duplicado
-        let covered: HashSet<u32> = want.iter().filter(|p| want.iter().any(|o| o != *p && st.tree.get(o).map_or(false, |d| d.contains(p)))).copied().collect();
-        want.retain(|p| !covered.contains(p));
+    let on_air = streaming(st);
+    let sessions: Vec<logic::SessionIn> = st.sessions.iter().map(|(pid, key, active)| {
+        let (on, vol) = pref_of(&st.prefs, key);
+        logic::SessionIn { pid: *pid, key: key.clone(), on, vol, active: *active }
+    }).collect();
+    let plan = logic::plan(&st.table, &sessions, &st.room);
+    // log de mudanças de plano
+    let desc = |p: &logic::Plan| { let mut v: Vec<String> = p.mixed.iter().map(|(pid, (k, _))| format!("{k}#{pid}")).collect(); v.sort(); v.join(", ") };
+    if desc(&plan) != desc(&st.plan) || plan.blocked.len() != st.plan.blocked.len() {
+        log(&format!("mistura: [{}]{}", desc(&plan), if plan.blocked.is_empty() { String::new() } else { format!(" bloqueados: {:?}", plan.blocked) }));
     }
-    let mut gains: HashMap<u32, f32> = HashMap::new();
-    for a in &st.apps {
-        let (on, vol) = pref_of(&st.prefs, &a.key);
-        if on { for r in &a.roots { if want.contains(r) { gains.insert(*r, vol); } } }
+    st.gains = plan.mixed.iter().map(|(pid, (_, vol))| (*pid, *vol)).collect();
+    let mut want: HashMap<u32, String> = HashMap::new();
+    if on_air {
+        for (pid, (k, _)) in &plan.mixed { want.insert(*pid, k.clone()); }
+        for (pid, k) in &plan.analysis { want.entry(*pid).or_insert_with(|| k.clone()); }
     }
-    st.gains = gains;
+    st.plan = plan;
 
     let now = Instant::now();
-    let running: Vec<u32> = st.caps.keys().copied().collect();
-    for pid in running {
-        let drop_it = match st.caps.get_mut(&pid) {
-            None => false,
-            Some(c) => {
-                if !c.alive.load(Ordering::Relaxed) { true }           // a captura caiu: sai daqui para ser refeita
-                else if want.contains(&pid) { c.off_since = None; false }
-                else if !streaming { true }                             // parou de transmitir: solta tudo
-                else { now.duration_since(*c.off_since.get_or_insert(now)) > GRACE }
-            }
+    let pids: Vec<u32> = st.caps.keys().copied().collect();
+    for pid in pids {
+        let drop_it = {
+            let c = st.caps.get_mut(&pid).unwrap();
+            if !c.alive.load(Ordering::Relaxed) { true }
+            else if want.contains_key(&pid) { c.unused_since = None; false }
+            else if !on_air { true }
+            else { now.duration_since(*c.unused_since.get_or_insert(now)) > GRACE }
         };
         if drop_it {
-            if let Some(c) = st.caps.remove(&pid) {
-                c.stop.store(true, Ordering::Relaxed);
-                st.stopping.push((pid, c.alive.clone()));
-            }
+            if let Some(c) = st.caps.remove(&pid) { c.stop.store(true, Ordering::Relaxed); st.stopping.push((pid, c.alive.clone())); }
         }
     }
     st.stopping.retain(|(_, a)| a.load(Ordering::Relaxed));
-    for pid in want {
-        if st.caps.contains_key(&pid) { continue; }
-        if st.stopping.iter().any(|(p, _)| *p == pid) { continue; } // a anterior ainda está fechando; tenta de novo na próxima passada
-        let c = start_capture(pid, shared.clone());
-        st.caps.insert(pid, c);
+    for (pid, key) in want {
+        if st.caps.contains_key(&pid) || st.stopping.iter().any(|(p, _)| *p == pid) { continue; }
+        st.caps.insert(pid, start_capture(pid, key));
     }
 }
 
-/* ---------------- Mixer: junta os apps e manda para o site a cada 10 ms ---------------- */
+/* ---------------- Mistura ---------------- */
 
 fn mixer(shared: Shared) {
-    let period = Duration::from_millis(10);
-    let mut next = Instant::now() + period;
-    let mut mix = vec![0f32; TICK * CH];
-    let mut energy: HashMap<u32, (f64, usize)> = HashMap::new();
-    let mut ticks = 0usize;
+    let mut core = logic::MixCore::default();
+    let mut ticks = 0u64;
+    let mut was_on = false;
     loop {
-        let now = Instant::now();
-        if next > now { thread::sleep(next - now); } else if now - next > Duration::from_millis(60) { next = now; }
-        next += period;
+        thread::sleep(Duration::from_millis(10));
+        let now = logic::t100_to_frame(qpc_100ns());
         let mut guard = shared.lock().unwrap();
         let st = &mut *guard;
-        if !st.clients.iter().any(|c| c.streaming.load(Ordering::Relaxed)) { continue; }
-        mix.iter_mut().for_each(|s| *s = 0.0);
-        let gains = st.gains.clone();
-        for (pid, cap) in st.caps.iter_mut() {
-            let mut b = cap.buf.lock().unwrap();
-            // app fora da mistura (desmarcado, ainda dentro do prazo): o som é descartado, nada vai para a sala
-            let Some(&g) = gains.get(pid) else { b.clear(); cap.primed = false; continue; };
-            if !cap.primed { if b.len() >= TICK * CH * 3 { cap.primed = true; } else { continue; } }
-            let n = b.len().min(TICK * CH);
-            let e = energy.entry(*pid).or_insert((0.0, 0));
-            for (i, s) in b.drain(..n).enumerate() { mix[i] += s * g; e.0 += (s * s) as f64; }
-            e.1 += TICK * CH;
-            if n < TICK * CH { cap.primed = false; }
-            if b.len() > TICK * CH * 10 { let extra = b.len() - TICK * CH * 3; b.drain(..extra); }
+        if !streaming(st) {
+            if was_on { core.reset(); was_on = false; }
+            for c in st.caps.values() { c.q.lock().unwrap().clear(); }
+            continue;
         }
-        let mut bytes = Vec::with_capacity(mix.len() * 4);
-        for s in &mix { bytes.extend_from_slice(&s.clamp(-1.0, 1.0).to_le_bytes()); }
-        st.clients.retain(|c| !c.streaming.load(Ordering::Relaxed) || c.tx.send(Message::Binary(bytes.clone())).is_ok());
-        // a cada 150 ms, o nível de som de cada app (antes do volume), para o medidor da lista
+        was_on = true;
+        if core.begin(now) { log("a mistura ficou para trás e recomeçou perto do agora"); }
+        for (pid, c) in st.caps.iter() {
+            let mut q = c.q.lock().unwrap();
+            while let Some((ts, s)) = q.pop_front() { core.place(*pid, logic::t100_to_frame(ts), &s); }
+        }
+        let alive: HashSet<u32> = st.caps.keys().copied().collect();
+        core.keep(&alive);
+        let out = core.emit(now, &st.gains);
+        if !out.is_empty() {
+            let mut bytes = Vec::with_capacity(out.len() * 4);
+            for s in &out { bytes.extend_from_slice(&s.clamp(-1.0, 1.0).to_le_bytes()); }
+            st.clients.retain(|c| !c.streaming.load(Ordering::Relaxed) || c.tx.send(Message::Binary(bytes.clone().into())).is_ok());
+        }
         ticks += 1;
+        // a cada 150 ms: nível de cada app (antes do volume) e situação da captura
         if ticks % 15 == 0 {
-            let mut lv: HashMap<String, f64> = HashMap::new();
+            let mut lv: HashMap<String, f32> = HashMap::new();
+            let mut stt: HashMap<String, &str> = HashMap::new();
             for a in &st.apps {
-                let mut best = 0f64;
-                for r in &a.roots { if let Some((sum, n)) = energy.get(r) { if *n > 0 { best = best.max((sum / *n as f64).sqrt()); } } }
-                lv.insert(a.key.clone(), (best * 1000.0).round() / 1000.0);
+                let mut best = 0f32;
+                for (pid, c) in &st.caps { if c.key == a.key { if let Some(e) = core.env.get(pid) { for v in e.iter().rev().take(15) { best = best.max(*v); } } } }
+                if st.caps.values().any(|c| c.key == a.key) { lv.insert(a.key.clone(), (best * 1000.0).round() / 1000.0); }
+                let (s, _) = app_state(st, a);
+                if !s.is_empty() { stt.insert(a.key.clone(), s); }
             }
-            energy.clear();
-            let text = json!({"t": "levels", "l": lv}).to_string();
+            let text = json!({"t": "levels", "l": lv, "s": stt}).to_string();
             st.clients.retain(|c| !c.streaming.load(Ordering::Relaxed) || c.tx.send(Message::Text(text.clone().into())).is_ok());
         }
+        // a cada 1 s: quem está repetindo o som de quem
+        if ticks % 100 == 0 {
+            let mut env: HashMap<String, Vec<f32>> = HashMap::new();
+            for (pid, c) in &st.caps {
+                let Some(e) = core.env.get(pid) else { continue };
+                let v = env.entry(c.key.clone()).or_insert_with(|| vec![0.0; e.len()]);
+                if v.len() < e.len() { v.resize(e.len(), 0.0); }
+                let off = v.len() - e.len();
+                for (i, x) in e.iter().enumerate() { v[off + i] = v[off + i].max(*x); }
+            }
+            let found = logic::repeats(&env, 0.85);
+            let until = Instant::now() + Duration::from_secs(15);
+            let mut changed = false;
+            for (a, list) in found {
+                let names: Vec<String> = list.into_iter().map(|(b, _)| b).collect();
+                let same = st.repeats.get(&a).map_or(false, |(v, _)| *v == names);
+                if !same { log(&format!("{} parece repetir o som de {:?}", a, names)); changed = true; }
+                st.repeats.insert(a, (names, until));
+            }
+            let before = st.repeats.len();
+            let now_i = Instant::now();
+            st.repeats.retain(|_, (_, t)| *t > now_i);
+            if changed || before != st.repeats.len() { st.version += 1; }
+            if ticks % 1000 == 0 {
+                // resumo a cada 10 s no registro, para diagnóstico
+                let mut parts: Vec<String> = st.caps.iter().map(|(pid, c)| format!("{}#{} {}pac {}sil vol={:?}", c.key.rsplit('\\').next().unwrap_or(""), pid, c.packets.load(Ordering::Relaxed), c.silent.load(Ordering::Relaxed), st.gains.get(pid))).collect();
+                parts.sort();
+                log(&format!("resumo: atrasados={} | {}", core.late, parts.join(" | ")));
+            }
+        }
+    }
+}
+
+/* ---------------- Qual navegador abriu a conexão ---------------- */
+
+/// O navegador que conecta ao programa é o mesmo em que a sala está aberta. Marcar esse navegador
+/// devolveria as vozes e as telas da sala para a transmissão (eco), então a interface avisa.
+fn browser_of_connection(peer_port: u16) -> Option<String> {
+    unsafe {
+        let mut size = 0u32;
+        let _ = GetExtendedTcpTable(None, &mut size, false, AF_INET.0 as u32, TCP_TABLE_OWNER_PID_ALL, 0);
+        if size == 0 { return None; }
+        let mut buf = vec![0u8; size as usize + 1024];
+        size = buf.len() as u32;
+        if GetExtendedTcpTable(Some(buf.as_mut_ptr() as *mut _), &mut size, false, AF_INET.0 as u32, TCP_TABLE_OWNER_PID_ALL, 0) != 0 { return None; }
+        let t = &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID);
+        let rows = std::slice::from_raw_parts(t.table.as_ptr(), t.dwNumEntries as usize);
+        let port = |v: u32| u16::from_be((v & 0xffff) as u16);
+        let row = rows.iter().find(|r| port(r.dwLocalPort) == peer_port && port(r.dwRemotePort) == PORT)?;
+        let pid = row.dwOwningPid;
+        // sobe até o processo principal do navegador
+        let table = process_table();
+        let exe = table.get(&pid)?.1.clone();
+        let mut cur = pid;
+        for _ in 0..8 {
+            let Some((parent, _)) = table.get(&cur) else { break };
+            match table.get(parent) { Some((_, e)) if *e == exe && *parent != cur => cur = *parent, _ => break }
+        }
+        exe_path(cur).map(|p| p.to_lowercase())
     }
 }
 
@@ -471,70 +582,89 @@ fn client_loop(shared: Shared, stream: TcpStream) -> Result<(), Box<dyn std::err
     let check = |req: &Request, resp: Response| -> Result<Response, ErrorResponse> {
         let o = req.headers().get("origin").and_then(|v| v.to_str().ok()).unwrap_or("");
         if origin_ok(o) { Ok(resp) } else {
+            log(&format!("conexão recusada de {o}"));
             let mut r = ErrorResponse::new(Some("origem não autorizada".into()));
             *r.status_mut() = tungstenite::http::StatusCode::FORBIDDEN; Err(r)
         }
     };
+    let peer_port = stream.peer_addr().map(|a| a.port()).unwrap_or(0);
     let mut ws = tungstenite::accept_hdr(stream.try_clone()?, check)?;
-    stream.set_read_timeout(Some(Duration::from_millis(5)))?;
     stream.set_nodelay(true)?;
+    stream.set_nonblocking(true)?;
+    let browser = browser_of_connection(peer_port);
+    log(&format!("site conectado (navegador: {})", browser.as_deref().unwrap_or("desconhecido")));
     let (tx, rx): (Sender<Message>, Receiver<Message>) = channel();
-    let streaming = Arc::new(AtomicBool::new(false));
+    let on_air = Arc::new(AtomicBool::new(false));
     {
         let mut st = shared.lock().unwrap();
-        st.clients.push(Client { tx: tx.clone(), streaming: streaming.clone() });
-        let hello = json!({"t": "hello", "v": 1, "ver": env!("CARGO_PKG_VERSION"), "rate": RATE, "ch": CH, "name": "Cineminha Áudio"}).to_string();
+        if let Some(b) = &browser { st.room.insert(b.clone()); }
+        st.clients.push(Client { tx: tx.clone(), streaming: on_air.clone() });
+        st.version += 1;
+        let hello = json!({"t": "hello", "v": 2, "ver": env!("CARGO_PKG_VERSION"), "rate": RATE, "ch": CH, "name": "Cineminha Áudio", "room": browser}).to_string();
         let _ = tx.send(Message::Text(hello.into()));
         let _ = tx.send(Message::Text(apps_json(&st).into()));
     }
     CONNECTED.fetch_add(1, Ordering::Relaxed);
+    let would = |e: &tungstenite::Error| matches!(e, tungstenite::Error::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock);
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
         loop {
+            let mut busy = false;
             match ws.read() {
                 Ok(Message::Text(t)) => {
+                    busy = true;
                     if let Ok(m) = serde_json::from_str::<In>(&t) {
                         let mut st = shared.lock().unwrap();
                         match m.t.as_str() {
-                            "start" => streaming.store(true, Ordering::Relaxed),
-                            "stop" => streaming.store(false, Ordering::Relaxed),
+                            "start" => { if !on_air.swap(true, Ordering::Relaxed) { log("transmissão começou: som dos apps ligado"); } }
+                            "stop" => { if on_air.swap(false, Ordering::Relaxed) { log("transmissão parou"); } }
                             "set" => if let Some(k) = m.key {
                                 let (on0, vol0) = pref_of(&st.prefs, &k);
-                                st.prefs.insert(k, Pref { on: m.on.unwrap_or(on0), vol: m.vol.map(|v| (v / 100.0).clamp(0.0, 1.5)).unwrap_or(vol0) });
-                                st.version += 1;
+                                let on = m.on.unwrap_or(on0);
+                                log(&format!("{} {}", if on { "marcado:" } else { "desmarcado:" }, k));
+                                st.prefs.insert(k, Pref { on, vol: m.vol.map(|v| (v / 100.0).clamp(0.0, 1.5)).unwrap_or(vol0) });
                             },
                             "prefs" => if let Some(a) = m.apps {
                                 for (k, p) in a { st.prefs.insert(k, Pref { on: p.on, vol: p.vol.map(|v| (v / 100.0).clamp(0.0, 1.5)).unwrap_or(1.0) }); }
-                                st.version += 1;
                             },
                             _ => {}
                         }
+                        st.version += 1;
                         drop(st);
-                        manage_captures(&shared);
+                        manage(&shared);
                     }
                 }
                 Ok(Message::Close(_)) => break,
-                Ok(_) => {}
-                Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {}
-                Err(_) => break,
+                Ok(_) => { busy = true; }
+                Err(ref e) if would(e) => {}
+                Err(e) => { log(&format!("conexão com o site caiu: {e}")); break; }
             }
-            let mut sent = false;
-            while let Ok(msg) = rx.try_recv() { ws.write(msg)?; sent = true; }
-            if sent { ws.flush()?; }
+            let mut wrote = false;
+            while let Ok(msg) = rx.try_recv() {
+                wrote = true;
+                if let Err(e) = ws.write(msg) { if !would(&e) { log(&format!("erro ao enviar: {e}")); return Ok(()); } }
+            }
+            if wrote { if let Err(e) = ws.flush() { if !would(&e) { log(&format!("erro ao enviar: {e}")); return Ok(()); } } }
+            if !busy && !wrote { thread::sleep(Duration::from_millis(2)); }
         }
         Ok(())
     })();
-    streaming.store(false, Ordering::Relaxed);
+    on_air.store(false, Ordering::Relaxed);
+    log("site desconectado");
     CONNECTED.fetch_sub(1, Ordering::Relaxed);
-    shared.lock().unwrap().clients.retain(|c| !Arc::ptr_eq(&c.streaming, &streaming));
-    manage_captures(&shared);
+    {
+        let mut st = shared.lock().unwrap();
+        st.clients.retain(|c| !Arc::ptr_eq(&c.streaming, &on_air));
+        if st.clients.is_empty() { st.room.clear(); }
+    }
+    manage(&shared);
     result
 }
-
 /* ---------------- Bandeja do Windows ---------------- */
 
 const WM_TRAY: u32 = WM_APP + 1;
 const ID_OPEN: usize = 1;
 const ID_QUIT: usize = 2;
+const ID_LOG: usize = 3;
 
 fn make_icon() -> HICON {
     unsafe {
@@ -587,6 +717,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 let _ = AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, PCWSTR(status.as_ptr()));
                 let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
                 let _ = AppendMenuW(menu, MF_STRING, ID_OPEN, w!("Abrir o Cineminha"));
+                let _ = AppendMenuW(menu, MF_STRING, ID_LOG, w!("Abrir registro (diagnóstico)"));
                 let _ = AppendMenuW(menu, MF_STRING, ID_QUIT, w!("Sair"));
                 let mut pt = POINT::default();
                 let _ = GetCursorPos(&mut pt);
@@ -595,6 +726,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 let _ = DestroyMenu(menu);
                 match cmd.0 as usize {
                     ID_OPEN => { ShellExecuteW(None, w!("open"), PCWSTR(wide(SITE).as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL); }
+                    ID_LOG => { let p = wide(&log_path().to_string_lossy()); ShellExecuteW(None, w!("open"), PCWSTR(p.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL); }
                     ID_QUIT => { quit(); }
                     _ => {}
                 }
@@ -651,6 +783,7 @@ fn tray() {
     }
 }
 
+
 /* ---------------- Início ---------------- */
 
 fn main() {
@@ -661,35 +794,49 @@ fn main() {
             return;
         }
     }
+    log_open();
+    log(&format!("Cineminha Áudio {} ligado", env!("CARGO_PKG_VERSION")));
     let listener = match TcpListener::bind(("127.0.0.1", PORT)) {
         Ok(l) => l,
         Err(_) => { message_box("Não foi possível iniciar: a porta 47833 está em uso por outro programa."); return; }
     };
-    let shared: Shared = Arc::new(Mutex::new(State { apps: vec![], prefs: HashMap::new(), clients: vec![], caps: HashMap::new(), version: 0, error: None, tree: HashMap::new(), gains: HashMap::new(), stopping: Vec::new() }));
+    let shared: Shared = Arc::new(Mutex::new(State {
+        apps: vec![], sessions: vec![], table: HashMap::new(), prefs: HashMap::new(), clients: vec![], caps: HashMap::new(),
+        stopping: vec![], gains: HashMap::new(), plan: logic::Plan::default(), room: HashSet::new(), repeats: HashMap::new(),
+        version: 0, error: None,
+    }));
 
     { let sh = shared.clone(); thread::spawn(move || serve(sh, listener)); }
-    { let sh = shared.clone(); thread::spawn(move || mixer(sh)); }
     {
-        // varre os apps a cada 1,5 s e avisa o site quando a lista muda
+        let sh = shared.clone();
+        thread::Builder::new().name("mistura".into()).spawn(move || {
+            unsafe { let _ = windows::Win32::System::Threading::SetThreadPriority(windows::Win32::System::Threading::GetCurrentThread(), THREAD_PRIORITY_HIGHEST); }
+            mixer(sh)
+        }).ok();
+    }
+    {
+        // varre os apps a cada 1 s e avisa o site quando algo muda
         let sh = shared.clone();
         thread::spawn(move || {
             unsafe { let _ = CoInitializeEx(None, COINIT_MULTITHREADED); }
             let mut icons = HashMap::new();
-            let mut last_sent = String::new();
-            let mut last_version = usize::MAX;
+            let (mut last_sent, mut last_version) = (String::new(), usize::MAX);
             loop {
-                let (apps, tree) = scan_apps(&mut icons);
+                let (apps, sessions, table) = scan(&mut icons);
                 {
                     let mut st = sh.lock().unwrap();
-                    st.apps = apps; st.tree = tree;
+                    st.apps = apps; st.sessions = sessions; st.table = table;
+                }
+                manage(&sh);
+                {
+                    let mut st = sh.lock().unwrap();
                     let text = apps_json(&st);
                     if text != last_sent || st.version != last_version {
                         last_sent = text.clone(); last_version = st.version;
                         broadcast_text(&mut st, text);
                     }
                 }
-                manage_captures(&sh);
-                thread::sleep(Duration::from_millis(1500));
+                thread::sleep(Duration::from_millis(1000));
             }
         });
     }

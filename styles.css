@@ -512,8 +512,8 @@ body:not(.watching) .theirs{display:none!important}
 
 /* ---------- Som dos apps (Cineminha Áudio) ---------- */
 .appbox{display:grid;gap:8px}
-.applist{display:grid;max-height:260px;overflow:auto;margin:0 -4px;padding:2px 4px}
-.app{display:flex;align-items:center;gap:12px;min-height:44px;padding:6px 8px;border-radius:10px;cursor:pointer;animation:rise var(--t2) var(--ease) both;transition:background-color var(--t1)}
+.applist{display:flex;flex-direction:column;max-height:320px;overflow:auto;margin:0 -4px;padding:2px 4px}
+.app{display:flex;flex:none;align-items:center;gap:12px;min-height:44px;padding:6px 8px;border-radius:10px;cursor:pointer;animation:rise var(--t2) var(--ease) both;transition:background-color var(--t1)}
 .app:hover{background:var(--hover)}
 .app input{position:absolute;opacity:0;width:1px;height:1px}
 .app .box{width:20px;height:20px;border-radius:6px;flex:none;display:grid;place-items:center;background:var(--bg2);box-shadow:0 0 0 1.5px var(--line2) inset;transition:background-color var(--t2),box-shadow var(--t2)}
@@ -551,7 +551,7 @@ body:not(.watching) .theirs{display:none!important}
 .vmic.off{color:var(--faint)}
 #headB.deaf{color:var(--live)}
 .applist .warn2{font-size:12px;color:var(--warn);margin:0 4px 4px;text-wrap:pretty}
-.app .inc{display:block;font-size:11.5px;color:var(--muted);white-space:normal}
+.app .inc{display:block;font-size:11.5px;line-height:1.35;color:var(--muted);white-space:normal;text-wrap:pretty;margin-top:1px}
 .app .nmw{flex:1;min-width:0;display:grid}
 .app input:not(:checked) ~ .nmw{opacity:.55}
 
@@ -571,7 +571,6 @@ body:not(.watching) .theirs{display:none!important}
 #monB.on{color:var(--live)}
 .micwarn{margin:0;font-size:12.5px;color:var(--warn);text-wrap:pretty}
 
-.app.stale .nm::after{content:" · sem som chegando";color:var(--warn);font-weight:400;font-size:12px}
 
 .upd{display:flex;align-items:center;gap:10px;margin:12px 20px 0;padding:10px 12px 10px 14px;border-radius:var(--r-md);background:var(--accent-soft);color:var(--head);box-shadow:0 0 0 1px var(--accent-line) inset;font-weight:500;animation:rise var(--t3) var(--ease)}
 .upd .i{color:var(--accent)}
@@ -620,3 +619,7 @@ body.theater .ctl{display:none}
 .vmute.on{color:var(--live)}
 .watch + .vmute{margin-left:6px}
 .app .inc.echo{color:var(--warn)}
+.app .ast{display:block;font-size:11px;line-height:1.35;color:var(--muted);white-space:normal;transition:color .2s}
+.app .ast.s-ok{color:var(--ok, #3ecf8e)}
+.app .ast.s-bloqueado,.app .ast.s-falhou{color:var(--warn)}
+.app .inc.echo:not([hidden]) + .ast.s-bloqueado,.app .inc.echo:not([hidden]) + .ast.s-falhou{display:none}

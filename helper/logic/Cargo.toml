@@ -1,0 +1,8 @@
+[package]
+name = "cineminha-logic"
+version = "1.4.0"
+edition = "2021"
+description = "Lógica do Cineminha Áudio que não depende do Windows: escolha dos processos, mistura e detecção de repetição"
+
+[lib]
+path = "src/lib.rs"
