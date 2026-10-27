@@ -12,20 +12,20 @@
  *                       padrão: https://cineminha.online e o endereço antigo
  */
 
-const TTL = 12 * 60 * 60;            // credenciais valem 12 horas
+const TTL = 4 * 60 * 60;             // credenciais valem 4 horas (o site renova sozinho antes de vencer)
 const DEFAULT_ORIGINS = 'https://cineminha.online,https://www.cineminha.online,https://cineminha.pages.dev,https://geraldogg77.github.io';
-const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
     const allowed = (env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(',').map(s => s.trim()).filter(Boolean);
-    const ok = allowed.includes(origin) || LOCAL.test(origin);
+    const ok = allowed.includes(origin);
     const cors = {
       'Access-Control-Allow-Origin': ok ? origin : allowed[0],
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
       'Access-Control-Max-Age': '86400',
-      'Vary': 'Origin'
+      'Vary': 'Origin',
+      'X-Content-Type-Options': 'nosniff'
     };
     if (request.method === 'OPTIONS') return new Response(null, {status: 204, headers: cors});
     if (request.method !== 'GET') return json({error: 'Use GET.'}, 405, cors);

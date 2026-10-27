@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=33">
+<link rel="stylesheet" href="styles.css?v=34">
 </head>
 <body class="booting">
 <noscript><div style="padding:40px;font-family:system-ui;color:#eee;background:#0E0C12"><h1>Cineminha</h1><p>Transmita sua tela para os amigos com voz, câmera e chat ao vivo, direto do navegador. Ative o JavaScript para usar.</p></div></noscript>
@@ -43,6 +43,9 @@
 <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/></symbol>
 <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v12M6.5 10.5 12 16l5.5-5.5M5 20h14"/></symbol>
 <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 20V8M6.5 13.5 12 8l5.5 5.5M5 4h14"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
+<symbol id="i-unlock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 7.7-1.5"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></symbol>
 <symbol id="i-logo" viewBox="0 0 24 24"><path d="M9 7.5v9l7.5-4.5z" fill="currentColor" stroke="none"/></symbol>
 <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
 <symbol id="i-max" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></symbol>
@@ -94,6 +97,7 @@
   <button class="nav act" data-act="focusStage"><svg class="i"><use href="#i-monitor"/></svg>Transmissão<span class="navbadge" id="navLive" hidden>ao vivo</span></button>
   <button class="nav" data-act="chat"><svg class="i"><use href="#i-chat"/></svg>Chat<span class="navbadge n" id="unread" hidden>0</span></button>
   <button class="nav" data-act="invite"><svg class="i"><use href="#i-userplus"/></svg>Convidar</button>
+  <button class="nav h-only lockN" data-act="lock" aria-pressed="false"><svg class="i"><use href="#i-unlock"/></svg><span class="lockT">Trancar sala</span></button>
   <button class="nav h-only stageN" data-act="stage"><svg class="i"><use href="#i-stage"/></svg>Modo palco<span class="navbadge" id="navStage" hidden>ativo</span></button>
   <button class="nav" data-act="settings"><svg class="i"><use href="#i-cfg"/></svg>Configurações</button>
   <div class="cat" id="memTitle">Na sala</div>
@@ -212,11 +216,11 @@
       <div class="applist" id="appList" hidden></div>
       <div class="appget" id="appGet">
        <p id="appGetT">Para escolher os apps, como Spotify, Discord e jogos, instale o <b>Cineminha Áudio</b>: um programa de 650 KB para Windows 10 e 11 que fica na bandeja, perto do relógio.</p>
-       <div class="row"><a class="btn go" id="appDl" href="download/CineminhaAudio.exe?v=1.4.0" download><svg class="i"><use href="#i-download"/></svg><span>Baixar Cineminha Áudio</span></a><button type="button" class="btn" id="appConn">Já está aberto, conectar</button></div>
+       <div class="row"><a class="btn go" id="appDl" href="download/CineminhaAudio.exe?v=1.4.1" download><svg class="i"><use href="#i-download"/></svg><span>Baixar Cineminha Áudio</span></a><button type="button" class="btn" id="appConn">Já está aberto, conectar</button></div>
        <small class="fh" id="appGetH" hidden>Abra o arquivo baixado. Se o Windows avisar que protegeu o computador, clique em <b>Mais informações</b> › <b>Executar assim mesmo</b>. Se o navegador pedir acesso a dispositivos locais, clique em <b>Permitir</b>.</small>
       </div>
      </div>
-     <div class="appfoot" id="appFoot" hidden><span id="appVer"></span><a class="btn sm" id="appDl2" href="download/CineminhaAudio.exe?v=1.4.0" download><svg class="i"><use href="#i-download"/></svg><span>Baixar a versão mais nova</span></a></div>
+     <div class="appfoot" id="appFoot" hidden><span id="appVer"></span><a class="btn sm" id="appDl2" href="download/CineminhaAudio.exe?v=1.4.1" download><svg class="i"><use href="#i-download"/></svg><span>Baixar a versão mais nova</span></a></div>
      <div class="mbot"><input class="rng" type="range" data-k="vApps" data-n min="0" max="150" step="1" aria-label="Volume dos apps"><span class="meter" data-m="apps"><i></i></span><b class="pct" data-pct="vApps"></b></div>
     </div>
     <div class="mrow" data-src="screen">
@@ -249,6 +253,10 @@
   <div class="f"><span class="fl" id="l-abr">Qualidade do áudio</span><select data-k="abr" data-n aria-labelledby="l-abr"><option value="128">128 kbps</option><option value="192">192 kbps</option><option value="320">320 kbps</option><option value="510" data-d="Máxima">510 kbps</option></select><small class="fh">Vale para quem entrar depois da mudança.</small></div>
   <div class="f h-only"><span class="fl" id="l-max">Máximo de convidados na sala</span><select data-k="max" data-n aria-labelledby="l-max"><option value="1">1 pessoa</option><option value="2">2 pessoas</option><option value="3">3 pessoas</option><option value="4">4 pessoas</option><option value="5">5 pessoas</option><option value="6">6 pessoas</option><option value="7">7 pessoas</option><option value="8">8 pessoas</option><option value="9">9 pessoas</option><option value="10">10 pessoas</option></select><small class="fh">Cada pessoa que assiste uma tela usa upload de quem transmite. Com muitas pessoas, use a predefinição Equilibrada.</small></div>
   <p class="note" id="need"></p>
+  <section class="f"><span class="fl">Privacidade</span>
+   <label class="tg"><span><b>Esconder meu IP</b><small>Seu áudio e vídeo passam por um servidor de repasse, então ninguém na sala vê o seu endereço de internet. A imagem pode ficar um pouco mais lenta.</small></span><input type="checkbox" id="hideIp"><i aria-hidden="true"></i></label>
+   <p class="note">Voz, câmera e tela vão criptografadas de ponta a ponta entre os navegadores. O Cineminha não grava nem guarda nada da sala.</p>
+  </section>
  </div>
  <div class="pane" id="p-ap" hidden>
   <div class="f"><span class="fl">Seu perfil</span><div class="pickrow"><button type="button" class="pick mepic" id="avPrev2" aria-label="Trocar foto de perfil"></button>
@@ -286,7 +294,7 @@
  </form>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="app.js?v=33"></script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" integrity="sha384-nlUQ8ZqCbvStErob+biJNzSgltf6urV3VGqhfIfzhmg9RXmpeRm76ELw0pYnKlTR" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="app.js?v=34"></script>
 </body>
 </html>

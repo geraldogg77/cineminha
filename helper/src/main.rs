@@ -568,7 +568,8 @@ struct In { t: String, key: Option<String>, on: Option<bool>, vol: Option<f32>, 
 struct PrefIn { on: bool, vol: Option<f32> }
 
 fn origin_ok(o: &str) -> bool {
-    ALLOWED.contains(&o) || o.starts_with("http://localhost:") || o.starts_with("http://127.0.0.1:") || o == "http://localhost"
+    // só o próprio site: nenhuma outra página, nem servidores locais, controla o programa
+    ALLOWED.contains(&o)
 }
 
 fn serve(shared: Shared, listener: TcpListener) {
@@ -588,7 +589,10 @@ fn client_loop(shared: Shared, stream: TcpStream) -> Result<(), Box<dyn std::err
         }
     };
     let peer_port = stream.peer_addr().map(|a| a.port()).unwrap_or(0);
-    let mut ws = tungstenite::accept_hdr(stream.try_clone()?, check)?;
+    // mensagens do site são pequenas: limita o tamanho para ninguém travar o programa
+    let mut cfg = tungstenite::protocol::WebSocketConfig::default();
+    cfg.max_message_size = Some(64 * 1024); cfg.max_frame_size = Some(64 * 1024);
+    let mut ws = tungstenite::accept_hdr_with_config(stream.try_clone()?, check, Some(cfg))?;
     stream.set_nodelay(true)?;
     stream.set_nonblocking(true)?;
     let browser = browser_of_connection(peer_port);

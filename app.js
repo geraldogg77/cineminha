@@ -1,7 +1,10 @@
 'use strict';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const badge = $('#badge'), stage = $('#stage'), root = document.documentElement;
-const target = new URLSearchParams(location.search).get('v');
+const rawTarget = new URLSearchParams(location.search).get('v');
+/* só aceita códigos de sala no formato do PeerJS: nada de texto arbitrário vindo do link */
+const target = rawTarget && /^[A-Za-z0-9][A-Za-z0-9_-]{3,63}$/.test(rawTarget) ? rawTarget : null;
+if (rawTarget && !target) history.replaceState(null, '', location.pathname);
 /* link de sala não entra no Google: só a página inicial */
 if (target) { const r = document.querySelector('meta[name=robots]'); if (r) r.content = 'noindex, follow'; }
 const isHost = !target;
@@ -26,7 +29,7 @@ async function loadIce() {
     const d = await r.json();
     if (!r.ok || !Array.isArray(d.iceServers) || !d.iceServers.length) throw new Error(d.error || r.status);
     ICE.iceServers = d.iceServers; relayName = 'Cloudflare'; ttl = d.ttl || 43200;
-    if (peer && peer.options) peer.options.config = {iceServers: ICE.iceServers};
+    if (peer && peer.options) peer.options.config = {iceServers: ICE.iceServers, iceTransportPolicy: S.hideIp ? 'relay' : 'all'};
   } catch (e) {
     console.warn('TURN: usando o servidor público.', e);
   }
@@ -39,12 +42,17 @@ async function loadIce() {
    para os convites antigos continuarem valendo. Aqui, no endereço novo, recebe esses dados uma vez. */
 const NEW_HOME = 'https://cineminha.online/', ON_OLD = /\.github\.io$/.test(location.hostname);
 (function migrateIn() {
-  const m = location.hash.match(/^#mig=([A-Za-z0-9_-]+)$/); if (!m) return;
+  const m = location.hash.match(/^#mig=([A-Za-z0-9_-]{1,8000})$/); if (!m) return;
+  /* só vale quando quem mandou para cá foi o endereço antigo: um link forjado não troca o ID da sala de ninguém */
+  if (!/^https:\/\/geraldogg77\.github\.io(\/|$)/.test(document.referrer || '')) { history.replaceState(null, '', location.pathname + location.search); return; }
   try {
     const d = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
     if (typeof d.id === 'string' && /^tl[a-z0-9]{4,20}$/.test(d.id) && !localStorage.getItem('tl-id')) localStorage.setItem('tl-id', d.id);
     if (typeof d.name === 'string' && d.name && !localStorage.getItem('tl-name')) localStorage.setItem('tl-name', d.name.slice(0, 20));
-    if (d.set && typeof d.set === 'object' && !localStorage.getItem('tl-set')) localStorage.setItem('tl-set', JSON.stringify(d.set));
+    if (d.set && typeof d.set === 'object' && !Array.isArray(d.set) && !localStorage.getItem('tl-set')) {
+      const ok = {}; Object.keys(d.set).slice(0, 60).forEach(k => { const v = d.set[k]; if (/^[a-zA-Z]{1,20}$/.test(k) && ['string', 'number', 'boolean'].includes(typeof v) && String(v).length <= 80) ok[k] = v; });
+      localStorage.setItem('tl-set', JSON.stringify(ok));
+    }
   } catch (e) {}
   history.replaceState(null, '', location.pathname + location.search);
 })();
@@ -55,8 +63,12 @@ const PRE = {
 };
 const S = {theme: 'dark', accent: '#5B7CFA', calm: false, res: 1080, fps: 60, br: 12, prio: 'motion', codec: 'auto', abr: 320, max: 2,
   mxScreen: true, vScreen: 100, mxMic: false, vMic: 100, micDev: '', mxExtra: false, vExtra: 100, extDev: '',
-  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false, outDev: '', vVoice: 100, src: 'screen', camDev: ''};
-try { Object.assign(S, JSON.parse(localStorage.getItem('tl-set') || '{}')); } catch (e) {}
+  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false, outDev: '', vVoice: 100, src: 'screen', camDev: '', hideIp: false};
+try {
+  const saved = JSON.parse(localStorage.getItem('tl-set') || '{}');
+  if (saved && typeof saved === 'object') Object.keys(S).forEach(k => { if (k in saved && typeof saved[k] === typeof S[k] && (typeof S[k] !== 'object' || (saved[k] && !Array.isArray(saved[k])))) S[k] = saved[k]; });
+} catch (e) {}
+S.hideIp = !!S.hideIp;
 if (!['dark', 'classic', 'oled', 'light'].includes(S.theme)) S.theme = 'dark';
 if (!['screen', 'cam'].includes(S.src)) S.src = 'screen';
 S.max = Math.min(10, Math.max(1, +S.max || 2));
@@ -72,7 +84,9 @@ let focus = null, wantMuted = true, soundOk = false, deaf = false, scrVol = 1, m
 const scr = new Map();     // telas que recebo: id → {call, stream, q}
 const cams = new Map();    // câmeras que recebo: id → {call, stream}
 const camOut = new Map();  // minha câmera indo para cada pessoa: id → chamada
-const clean = s => String(s || '').trim().slice(0, 20);
+/* tira caracteres de controle, invisíveis e de direção (usados para disfarçar nomes e links) */
+const strip = s => String(s == null ? '' : s).replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u00AD\u061C\u115F\u1160\u180E\u200B\u200C\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\u3164\uFEFF\uFFA0\uFFF9-\uFFFB]/g, '');
+const clean = s => strip(String(s || '').slice(0, 60)).replace(/\s+/g, ' ').trim().slice(0, 20);
 const hue = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const playV = v => { const p = v.play(); if (p) p.catch(() => { if (!v.muted) { wantMuted = true; soundOk = false; v.muted = true; needSound(); v.play().catch(() => {}); } }); };
 /* mostra "Ativar som" quando o navegador (principalmente no celular) bloqueou o som até um toque */
@@ -85,7 +99,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 33;   // igual ao ?v= do app.js no index.html
+const APP_VER = 34;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -807,7 +821,7 @@ $('#outTest').onclick = () => {
    Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
    O site só tenta conectar depois que a pessoa baixou ou pediu para conectar, para não incomodar quem não usa. */
 const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: '', sig: '', fr: 0, pk: 0};
-const HELPER_LATEST = '1.4.0';
+const HELPER_LATEST = '1.4.1';
 const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.q=[];this.o=0;this.n=0;this.on=false;
 this.port.onmessage=e=>{if(e.data==='reset'){this.q=[];this.o=0;this.n=0;this.on=false;return}this.q.push(e.data);this.n+=e.data.length;
 while(this.n>28800&&this.q.length>1){const d=this.q.shift();this.n-=d.length-this.o;this.o=0}}}
@@ -1085,6 +1099,12 @@ function renderMembers() {
       b.onclick = e => { e.stopPropagation(); sp ? stageMove(u.id, false) : stageInvite(u.id); };
       r.querySelector('.vic').append(b);
     }
+    if (isHost && !mine) {
+      const k = document.createElement('button'); k.type = 'button'; k.className = 'ibtn vmute kickB';
+      k.innerHTML = '<svg class="i"><use href="#i-x"/></svg>'; k.dataset.tip = 'Remover da sala'; k.setAttribute('aria-label', 'Remover ' + u.name + ' da sala');
+      k.onclick = e => { e.stopPropagation(); askKick(u.id); }; k.onkeydown = e => e.stopPropagation();
+      r.querySelector('.vic').append(k);
+    }
     if (!mine && (u.mic || vMuted.has(u.id))) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'ibtn vmute';
       b.innerHTML = '<svg class="i"><use href="#i-mic"/></svg>';
@@ -1249,8 +1269,12 @@ function reconcile() {
   if (focus && !byId(focus)) focus = null;
   updateQuality(); render();
 }
-function onCall(c) {
-  const k = c.metadata && c.metadata.kind;
+function onCall(c, tries = 0) {
+  const k = c.metadata && c.metadata.kind, u = byId(c.peer);
+  /* quem acabou de entrar pode ligar antes da lista nova chegar: espera um pouco antes de recusar */
+  if (!u && tries < 6 && c.peer !== myId) { setTimeout(() => onCall(c, tries + 1), 500); return; }
+  /* chamada de quem não está na sala (ou da plateia, no modo palco) é recusada sem abrir nada */
+  if (!u || c.peer === myId || ((k === 'voice' || k === 'cam' || !k || k === 'screen') && !onStage(u))) { try { c.close(); } catch (e) {} return; }
   if (k === 'voice') return onVoiceCall(c);
   if (k === 'cam') return onCamCall(c);
   const e = scr.get(c.peer);
@@ -1401,6 +1425,8 @@ function toRoom(m) {
 /* mensagens que chegam do anfitrião (no anfitrião, ele mesmo chama) */
 function onMsg(d) {
   if (!d) return;
+  if (d.t === 'kicked') { full = true; setStatus('Você foi removido da sala', 'O anfitrião tirou você desta sala.'); try { hostConn && hostConn.close(); } catch (e) {} return; }
+  if (d.t === 'locked') { full = true; setStatus('Sala trancada', 'O anfitrião trancou a sala para novas pessoas. Peça para ele destrancar e recarregue a página.'); return; }
   if (d.t === 'full') { full = true; setStatus('Sala cheia', 'Já há ' + d.max + (d.max > 1 ? ' convidados.' : ' convidado.') + ' Peça ao anfitrião para liberar mais vagas.'); }
   else if (d.t === 'msg' || d.t === 'sys') addMsg(d);
   else if (d.t === 'reacts') paintReacts(d.mid, d.r || {});
@@ -1450,7 +1476,7 @@ function onRoom(from, d) {
   if (!d || (from !== myId && !g)) return;
   const name = g ? g.name || 'Convidado' : me;
   if (d.t === 'hello' && g) {
-    const fresh = !g.name; g.name = clean(d.name) || 'Convidado'; g.avh = okH(d.avh); g.ver = +d.ver || 0; legacyIn(g, from, d); g.live = !!d.live; g.mic = !!d.mic; g.cam = !!d.cam;
+    const fresh = !g.name; g.name = uniqueName(clean(d.name) || 'Convidado', from); g.avh = okH(d.avh); g.ver = +d.ver || 0; legacyIn(g, from, d); g.live = !!d.live; g.mic = !!d.mic; g.cam = !!d.cam;
     if (fresh) sys(g.name + ' entrou na sala'); users();
   }
   else if (d.t === 'profile') { if (g) { g.avh = okH(d.avh); if (d.ver) g.ver = +d.ver; legacyIn(g, from, d); } users(); }
@@ -1464,7 +1490,7 @@ function onRoom(from, d) {
   else if (d.t === 'avc' && g && g.avh === okH(d.h)) avRecv(d);
   else if (d.t === 'voice') { if (g) g.mic = !!d.on; users(); }
   else if (d.t === 'cam') { if (g) g.cam = !!d.on; users(); }
-  else if (d.t === 'msg') { const text = String(d.text || '').trim().slice(0, 500); if (text) post({name, text, ts: Date.now(), host: !g, uid: from}); }
+  else if (d.t === 'msg') { if (typeof d.text !== 'string') return; const text = strip(d.text.slice(0, 2000)).replace(/\n{3,}/g, '\n\n').trim().slice(0, 500); if (text) post({name, text, ts: Date.now(), host: !g, uid: from}); }
   else if (d.t === 'react' && typeof d.mid === 'string' && EMO.includes(d.e)) {
     const r = REACT.get(d.mid); if (!r) return;
     const set = r[d.e] || (r[d.e] = new Set());
@@ -1490,7 +1516,8 @@ function onRoom(from, d) {
   else if (d.t === 'pause') { const m = {t: 'pause', id: from, name, v: !!d.v}; bcast(m); onMsg(m); }
 }
 function startPeer(id) {
-  peer = id ? new Peer(id, {config: ICE}) : new Peer({config: ICE});
+  const config = {iceServers: ICE.iceServers, iceTransportPolicy: S.hideIp ? 'relay' : 'all'};
+  peer = id ? new Peer(id, {config}) : new Peer({config});
   peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
   peer.on('call', onCall);
   return peer;
@@ -1512,11 +1539,13 @@ async function initHost() {
   });
   peer.on('connection', conn => {
     conn.on('open', () => {
+      if (banned.has(conn.peer)) { conn.send({t: 'kicked'}); setTimeout(() => conn.close(), 300); return; }
+      if (!guests.has(conn.peer) && roomLocked) { conn.send({t: 'locked'}); setTimeout(() => conn.close(), 300); return; }
       if (!guests.has(conn.peer) && guests.size >= S.max) { conn.send({t: 'full', max: S.max}); setTimeout(() => conn.close(), 500); return; }
       const old = guests.get(conn.peer); if (old && old.conn !== conn) { try { old.conn.close(); } catch (_) {} }
       guests.set(conn.peer, {conn, name: old ? old.name : '', av: old ? old.av : '', live: old ? old.live : false});
     });
-    conn.on('data', d => { const g = guests.get(conn.peer); if (g && g.conn === conn) onRoom(conn.peer, d); });
+    conn.on('data', d => { const g = guests.get(conn.peer); if (g && g.conn === conn && guard(g, conn.peer, d)) onRoom(conn.peer, d); });
     conn.on('close', () => {
       const g = guests.get(conn.peer);
       if (g && g.conn === conn) { guests.delete(conn.peer); closeOut(conn.peer); if (g.name) sys(g.name + ' saiu da sala'); users(); }
@@ -1914,3 +1943,66 @@ act.fs = () => {
   goFs(stage, v);
 };
 tileFs = R => goFs(R.el, mainVideo(R));
+
+
+/* ======================================================================
+   Segurança da sala (no anfitrião)
+   ====================================================================== */
+var banned = new Set(), roomLocked = false;
+const KINDS = new Set(['hello', 'profile', 'avget', 'avc', 'voice', 'cam', 'msg', 'react', 'fx', 'hand', 'spk', 'spkno', 'live', 'watch', 'unwatch', 'pause']);
+/* limite por tipo: [quantas, em quantos ms] */
+const RATE = {msg: [6, 8000], react: [24, 10000], fx: [10, 5000], hand: [6, 30000], hello: [4, 30000], profile: [6, 30000], avget: [60, 10000], avc: [320, 15000],
+  live: [10, 10000], voice: [10, 10000], cam: [10, 10000], watch: [40, 10000], unwatch: [40, 10000], pause: [10, 10000], spk: [6, 10000], spkno: [6, 10000]};
+function guard(g, id, d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d) || typeof d.t !== 'string' || !KINDS.has(d.t)) return strike(g, id, 'formato');
+  const now = Date.now(), lim = RATE[d.t] || [30, 10000];
+  const b = (g.rl = g.rl || {})[d.t] || (g.rl[d.t] = []);
+  while (b.length && now - b[0] > lim[1]) b.shift();
+  if (b.length >= lim[0]) {
+    if (d.t === 'msg' && now - (g.slowAt || 0) > 5000) { g.slowAt = now; g.conn.open && g.conn.send({t: 'sys', text: 'Calma: você está mandando mensagens rápido demais.'}); }
+    return strike(g, id, 'ritmo');
+  }
+  b.push(now);
+  /* mensagens grandes demais (fora os pedaços de foto) são descartadas */
+  if (d.t !== 'avc') { try { if (JSON.stringify(d).length > ((d.t === 'hello' || d.t === 'profile') ? 900000 : 4000)) return strike(g, id, 'tamanho'); } catch (e) { return strike(g, id, 'formato'); } }
+  return true;
+}
+/* quem abusa demais é desconectado */
+function strike(g, id, why) {
+  const now = Date.now(); g.strikes = (g.strikes || []).filter(t => now - t < 20000); g.strikes.push(now);
+  if (g.strikes.length > 60) { console.warn('Cineminha: desconectando', id, 'por abuso (' + why + ')'); kick(id, true); }
+  return false;
+}
+function uniqueName(n, id) {
+  const taken = new Set([me.toLowerCase(), ...[...guests.entries()].filter(([k, x]) => k !== id && x.name).map(([, x]) => x.name.toLowerCase())]);
+  if (!taken.has(n.toLowerCase())) return n;
+  for (let i = 2; i < 99; i++) { const c = n.slice(0, 17) + ' ' + i; if (!taken.has(c.toLowerCase())) return c; }
+  return 'Convidado ' + Math.random().toString(36).slice(2, 5);
+}
+function kick(id, quiet) {
+  const g = guests.get(id); if (!g) return;
+  banned.add(id);
+  try { g.conn.send({t: 'kicked'}); } catch (e) {}
+  setTimeout(() => { try { g.conn.close(); } catch (e) {} }, 250);
+  guests.delete(id); closeOut(id);
+  if (!quiet && g.name) sys(g.name + ' foi removido da sala');
+  users();
+}
+async function askKick(id) {
+  const g = guests.get(id); if (!g) return;
+  if (await ask('Remover ' + g.name + '?', g.name + ' sai da sala agora e não consegue voltar enquanto esta página estiver aberta. Para impedir que entre de novo depois, tranque a sala ou crie uma sala nova.', 'Remover')) kick(id);
+}
+function setLock(on) {
+  if (!isHost) return;
+  roomLocked = on;
+  $$('[data-act=lock]').forEach(b => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.querySelector('use').setAttribute('href', on ? '#i-lock' : '#i-unlock'); });
+  $$('.lockT').forEach(el => el.textContent = on ? 'Sala trancada' : 'Trancar sala');
+  sys(on ? 'Sala trancada: ninguém novo consegue entrar.' : 'Sala destrancada: quem tiver o link pode entrar.');
+  toast(on ? 'Sala trancada para novas pessoas' : 'Sala destrancada', 'ok');
+}
+act.lock = () => { nav(false); setLock(!roomLocked); };
+$('#hideIp').checked = S.hideIp;
+$('#hideIp').addEventListener('change', e => {
+  S.hideIp = e.target.checked; save();
+  toast(S.hideIp ? 'Seu IP fica escondido a partir da próxima conexão. Recarregue a página para aplicar.' : 'Conexão direta liberada. Recarregue a página para aplicar.', 'info', {label: 'Recarregar', fn: () => location.reload()});
+});

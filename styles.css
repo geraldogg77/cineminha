@@ -806,3 +806,7 @@ button.achip:hover{background:var(--bg3)}
 .tile.invite.small{place-content:center;border-radius:10px}
 .tile.invite.small .btn{height:32px;padding:0 12px;font-size:12.5px;margin:0;border-radius:10px;gap:6px}
 .tile.invite.small .btn .i{width:15px;height:15px}
+
+.nav.lockN.on{color:var(--warn)}
+.nav.lockN.on .i{color:var(--warn)}
+.kickB:hover{color:var(--live)!important}
