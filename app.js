@@ -68,9 +68,11 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 26;   // igual ao ?v= do app.js no index.html
+const APP_VER = 27;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
-const avatars = {};             // nome → endereço da foto
+const avatars = {};             // nome → hash da foto
+const avStill = {};             // hash → primeiro quadro do GIF (parado)
+const talkNames = new Set();    // quem está falando agora: o GIF dessas pessoas se mexe
 const avUrl = {}, avType = {}, avThumb = {}, avData = {};  // hash → endereço, tipo, miniatura estática, texto (versão antiga)
 let myAv = '', myAvH = '';
 const okH = h => typeof h === 'string' && /^[0-9a-f]{32}$/.test(h) ? h : '';
@@ -98,18 +100,40 @@ function avRegister(h, buf, type) {
   /* miniatura estática para o fundo desfocado dos quadrados: borrar um GIF animado grande pesa no computador */
   const img = new Image();
   img.onload = () => {
-    const c = document.createElement('canvas'); c.width = c.height = 64; const s = Math.min(img.width, img.height);
-    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 64, 64);
-    try { avThumb[h] = c.toDataURL('image/jpeg', .7); if (roomReady) render(); } catch (e) {}
+    const s = Math.min(img.width, img.height), sx = (img.width - s) / 2, sy = (img.height - s) / 2;
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    c.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, 64, 64);
+    try { avThumb[h] = c.toDataURL('image/jpeg', .7); } catch (e) {}
+    if (type === 'image/gif') {
+      /* primeiro quadro do GIF: é o que aparece enquanto a pessoa não fala */
+      const z = Math.min(256, s), f = document.createElement('canvas'); f.width = f.height = z;
+      f.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, z, z);
+      f.toBlob(b => { if (b) { avStill[h] = URL.createObjectURL(b); avRefresh(); } }, 'image/webp', .9);
+    } else if (roomReady) render();
   };
   img.src = avUrl[h];
   return avUrl[h];
 }
-const pic = (el, src) => { el.textContent = ''; el.style.background = 'center/cover no-repeat url("' + src + '")'; };
-const initial = (el, n) => { el.textContent = (n[0] || '?').toUpperCase(); el.style.background = 'hsl(' + hue(n) + ',42%,40%)'; };
-const avatar = (el, n) => { const src = n === me && myAv ? myAv : avatars[n]; src ? pic(el, src) : initial(el, n); };
+const pic = (el, src) => { if (el.dataset.src === src) return; el.dataset.src = src; el.textContent = ''; el.style.background = 'center/cover no-repeat url("' + src + '")'; };
+const initial = (el, n) => { el.dataset.src = ''; el.textContent = (n[0] || '?').toUpperCase(); el.style.background = 'hsl(' + hue(n) + ',42%,40%)'; };
+/* endereço da foto: GIF animado só enquanto a pessoa fala; parado, mostra o primeiro quadro */
+function avSrc(h, anim) {
+  if (!h || !avUrl[h]) return '';
+  if (anim || avType[h] !== 'image/gif') return avUrl[h];
+  return avStill[h] || '';
+}
+const avatar = (el, n) => {
+  el.dataset.avn = n;
+  const src = avSrc(n === me && myAvH ? myAvH : avatars[n], talkNames.has(n));
+  src ? pic(el, src) : initial(el, n);
+};
 function paintMe() {
-  $$('.mepic').forEach(el => myAv ? pic(el, myAv) : initial(el, me || clean($('#ni') && $('#ni').value) || '?'));
+  const n = me || clean($('#ni') && $('#ni').value) || '?';
+  $$('.mepic').forEach(el => {
+    /* na escolha da foto o GIF sempre se mexe, para você ver como ele fica */
+    if (el.classList.contains('pick')) { myAv ? pic(el, myAv) : initial(el, n); return; }
+    if (me) avatar(el, me); else { const src = avSrc(myAvH, false); src ? pic(el, src) : initial(el, n); }
+  });
 }
 function avRefresh() {
   paintMe();
@@ -694,12 +718,20 @@ function paintDeaf() {
 /* anel verde em quem está falando */
 const lvl = (an, buf) => { an.getByteTimeDomainData(buf); let s = 0; for (const x of buf) { const y = (x - 128) / 128; s += y * y; } return Math.sqrt(s / buf.length); };
 /* o nível de quem fala vem das estatísticas da conexão, sem passar o som pelo Web Audio (no iPhone isso mudava o som de lugar) */
+const lastTalk = {};  // id → última vez que a pessoa fez som; segura um instante para não piscar entre as sílabas
 setInterval(async () => {
-  const talking = new Set();
-  if (VO.on && MX.nodes.mic && lvl(MX.nodes.mic.an, MX.nodes.mic.buf) > .02) talking.add(myId);
+  const now = Date.now();
+  if (VO.on && MX.nodes.mic && lvl(MX.nodes.mic.an, MX.nodes.mic.buf) > .02) lastTalk[myId] = now;
   for (const [id, v] of VO.inc) {
-    const pc = v.call.peerConnection; if (!pc || deaf) continue;
-    try { (await pc.getStats()).forEach(x => { if (x.type === 'inbound-rtp' && x.kind === 'audio' && (x.audioLevel || 0) > .03) talking.add(id); }); } catch (e) {}
+    const pc = v.call.peerConnection; if (!pc || deaf || vMuted.has(id)) continue;
+    try { (await pc.getStats()).forEach(x => { if (x.type === 'inbound-rtp' && x.kind === 'audio' && (x.audioLevel || 0) > .03) lastTalk[id] = now; }); } catch (e) {}
+  }
+  const talking = new Set(Object.keys(lastTalk).filter(id => now - lastTalk[id] < 700 && (id === myId ? VO.on : VO.inc.has(id))));
+  const names = new Set([...talking].map(id => id === myId ? me : (byId(id) || {}).name).filter(Boolean));
+  const diff = new Set([...names, ...talkNames].filter(n => names.has(n) !== talkNames.has(n)));
+  if (diff.size) {
+    talkNames.clear(); names.forEach(n => talkNames.add(n));
+    $$('[data-avn]').forEach(el => { if (diff.has(el.dataset.avn)) avatar(el, el.dataset.avn); });
   }
   $$('.mem').forEach(r => r.querySelector('.av').classList.toggle('speak', talking.has(r.dataset.id)));
   $$('.tile').forEach(t => t.classList.toggle('speak', talking.has(t.dataset.id)));
@@ -942,7 +974,7 @@ const byId = id => lastList.find(u => u.id === id);
 const liveIds = () => lastList.filter(u => u.live).map(u => u.id);
 function renderMembers() {
   const list = lastList;
-  list.forEach(u => { u.avh = okH(u.avh); const url = u.avh && avUrl[u.avh]; if (url) avatars[u.name] = url; else delete avatars[u.name]; });
+  list.forEach(u => { u.avh = okH(u.avh); if (u.avh && avUrl[u.avh]) avatars[u.name] = u.avh; else delete avatars[u.name]; });
   const el = $('#members'), known = new Set([...el.children].map(c => c.dataset.id));
   el.textContent = '';
   list.forEach(u => {
@@ -970,7 +1002,7 @@ function renderMembers() {
     }
     el.append(r);
     if (u.host) {
-      const ri = $('#roomIcon'), ru = u.avh && avUrl[u.avh]; if (ru) pic(ri, ru); else { ri.style.background = ''; ri.textContent = (u.name[0] || '?').toUpperCase(); }
+      const ri = $('#roomIcon'), ru = avSrc(u.avh, false); if (ru) pic(ri, ru); else { ri.style.background = ''; ri.textContent = (u.name[0] || '?').toUpperCase(); }
       const t = 'Sala de ' + u.name; $('#roomName').textContent = $('#roomT').textContent = t; document.title = t + ' · Cineminha';
       ri.dataset.tip = t;
     }
@@ -1026,7 +1058,7 @@ function paintTile(R, u) {
   cl.toggle('me', mine); cl.toggle('scr', !!s); cl.toggle('cam', !!c); cl.toggle('wait', !!u.live && !s); cl.toggle('focus', f);
   setSrc(R.sv, s, !mine); setSrc(R.cv, c, false);
   avatar(R.av, u.name);
-  const src = mine && myAv ? myAv : avatars[u.name], th = avThumb[mine ? myAvH : u.avh];
+  const ah = mine ? myAvH : u.avh, src = ah && avUrl[ah], th = avThumb[ah];
   R.bg.style.backgroundImage = src ? 'url("' + (th || src) + '")' : ''; cl.toggle('hasbg', !!src);
   R.el.style.setProperty('--tbg', 'hsl(' + hue(u.name) + ',28%,' + (S.theme === 'light' ? '58%' : '24%') + ')');
   R.tag.textContent = mine ? u.name + ' (você)' : u.name;

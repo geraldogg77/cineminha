@@ -14,7 +14,7 @@ Transmita sua tela para até 4 amigos direto do navegador, com áudio e chat ao 
 
 As telas que não estão ampliadas chegam em qualidade mais leve, para não pesar no upload de quem transmite.
 
-A foto de perfil aceita imagem ou GIF animado de até 15 MB. Ela fica salva no seu navegador; na sala, cada pessoa recebe a foto uma vez só, em pedaços e sem atrasar o chat, e guarda para as próximas visitas.
+A foto de perfil aceita imagem ou GIF animado de até 15 MB. O GIF fica parado no primeiro quadro e só se mexe enquanto a pessoa está falando, como no Discord. Ela fica salva no seu navegador; na sala, cada pessoa recebe a foto uma vez só, em pedaços e sem atrasar o chat, e guarda para as próximas visitas.
 
 Funciona melhor no Chrome ou Edge no computador. Quem assiste pode usar qualquer navegador, inclusive no celular.
 
