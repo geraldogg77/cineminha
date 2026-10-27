@@ -23,3 +23,6 @@
   Cache-Control: no-cache
 /robots.txt
   Cache-Control: no-cache
+/sitemap.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: no-cache
