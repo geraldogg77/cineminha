@@ -31,6 +31,21 @@ async function loadIce() {
   /* renova 1 hora antes de expirar; sem sucesso, tenta de novo em 5 minutos */
   iceT = setTimeout(loadIce, ttl ? Math.max(600, ttl - 3600) * 1000 : 300000);
 }
+/* ---------- Mudança de endereço ----------
+   O site saiu de geraldogg77.github.io/cineminha para cineminha.online. No endereço antigo, assim que o
+   novo responde, a página leva a pessoa para lá com o apelido, as configurações e o código da sala,
+   para os convites antigos continuarem valendo. Aqui, no endereço novo, recebe esses dados uma vez. */
+const NEW_HOME = 'https://cineminha.online/', ON_OLD = /\.github\.io$/.test(location.hostname);
+(function migrateIn() {
+  const m = location.hash.match(/^#mig=([A-Za-z0-9_-]+)$/); if (!m) return;
+  try {
+    const d = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
+    if (typeof d.id === 'string' && /^tl[a-z0-9]{4,20}$/.test(d.id) && !localStorage.getItem('tl-id')) localStorage.setItem('tl-id', d.id);
+    if (typeof d.name === 'string' && d.name && !localStorage.getItem('tl-name')) localStorage.setItem('tl-name', d.name.slice(0, 20));
+    if (d.set && typeof d.set === 'object' && !localStorage.getItem('tl-set')) localStorage.setItem('tl-set', JSON.stringify(d.set));
+  } catch (e) {}
+  history.replaceState(null, '', location.pathname + location.search);
+})();
 const RES = {720: [1280, 720], 1080: [1920, 1080], 1440: [2560, 1440], 2160: [3840, 2160]};
 const PRE = {
   bal: {res: 1080, fps: 30, br: 6, prio: 'motion'}, alta: {res: 1080, fps: 60, br: 12, prio: 'motion'},
@@ -68,7 +83,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 27;   // igual ao ?v= do app.js no index.html
+const APP_VER = 28;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -769,7 +784,7 @@ $('#outTest').onclick = () => {
    Ele fica em 127.0.0.1:47833, manda a lista de apps e o som já mixado (float32, 48 kHz, estéreo).
    O site só tenta conectar depois que a pessoa baixou ou pediu para conectar, para não incomodar quem não usa. */
 const HP = {ws: null, ok: false, apps: [], node: null, poll: 0, error: null, ver: '', sig: '', fr: 0, pk: 0};
-const HELPER_LATEST = '1.3.1';
+const HELPER_LATEST = '1.3.2';
 const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.q=[];this.o=0;this.n=0;this.on=false;
 this.port.onmessage=e=>{if(e.data==='reset'){this.q=[];this.o=0;this.n=0;this.on=false;return}this.q.push(e.data);this.n+=e.data.length;
 while(this.n>28800&&this.q.length>1){const d=this.q.shift();this.n-=d.length-this.o;this.o=0}}}
@@ -934,6 +949,20 @@ async function checkDeploy() {
 }
 setInterval(checkDeploy, 180000);
 addEventListener('focus', () => checkDeploy());
+
+function moveOut() {
+  let d = {};
+  try { d = {id: localStorage.getItem('tl-id') || '', name: localStorage.getItem('tl-name') || '', set: JSON.parse(localStorage.getItem('tl-set') || 'null')}; } catch (e) {}
+  const b = btoa(unescape(encodeURIComponent(JSON.stringify(d)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  location.replace(NEW_HOME + location.search + '#mig=' + b);
+}
+/* no endereço antigo: quando o novo estiver no ar, leva a pessoa para lá (sem derrubar quem já está numa sala) */
+if (ON_OLD) fetch(NEW_HOME + 'alive.txt', {cache: 'no-store'}).then(r => r.ok ? r.text() : '').then(t => {
+  if ((t || '').trim() !== 'cineminha') return;
+  if (!me) return moveOut();
+  $('#upd span').textContent = 'O Cineminha agora fica em cineminha.online.';
+  $('#updB').textContent = 'Ir para o endereço novo'; $('#updB').onclick = moveOut; showUpdate();
+}).catch(() => {});
 
 /* ---------- Chat ---------- */
 let lastAuthor = null;

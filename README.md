@@ -2,7 +2,9 @@
 
 Transmita sua tela para até 4 amigos direto do navegador, com áudio e chat ao vivo. Sem instalar nada: a conexão é ponto a ponto (WebRTC via PeerJS) e o site é estático, hospedado no GitHub Pages.
 
-**Acesse:** https://geraldogg77.github.io/cineminha/
+**Acesse:** https://cineminha.online/
+
+O endereço antigo (geraldogg77.github.io/cineminha) leva sozinho para o novo, com o apelido, as configurações e o código da sala, então os convites antigos continuam valendo. A foto de perfil precisa ser escolhida de novo no endereço novo.
 
 ## Como usar
 
@@ -85,6 +87,13 @@ Custo: os primeiros 1.000 GB por mês são gratuitos; depois, US$ 0,05 por GB.
 Para confirmar, transmita e abra as estatísticas (S): uma conexão intermediada aparece como `via Cloudflare`.
 
 Pelo terminal, o passo 2 e 3 equivalem a `cd worker && npx wrangler deploy && npx wrangler secret put TURN_KEY_ID && npx wrangler secret put TURN_KEY_API_TOKEN`.
+
+## Hospedagem
+
+O site fica no **Cloudflare Pages**, ligado a este repositório: cada mudança na `main` entra no ar sozinha em cineminha.online. O DNS do domínio também fica na Cloudflare.
+
+- `_headers`: a página é sempre conferida (todos pegam a versão nova na hora); `app.js` e `styles.css` levam a versão no endereço (`?v=`), então podem ficar guardados.
+- `alive.txt`: o endereço antigo consulta este arquivo para saber que o novo está no ar antes de mandar as pessoas para lá.
 
 ## Arquivos
 

@@ -33,8 +33,8 @@ const PORT: u16 = 47833;
 const RATE: usize = 48000;
 const CH: usize = 2;
 const TICK: usize = RATE / 100; // 10 ms
-const SITE: &str = "https://geraldogg77.github.io/cineminha/";
-const ALLOWED: &[&str] = &["https://geraldogg77.github.io"];
+const SITE: &str = "https://cineminha.online/";
+const ALLOWED: &[&str] = &["https://cineminha.online", "https://www.cineminha.online", "https://cineminha.pages.dev", "https://geraldogg77.github.io"];
 
 /* ---------------- Estado compartilhado ---------------- */
 

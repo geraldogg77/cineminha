@@ -9,11 +9,11 @@
  *   TURN_KEY_API_TOKEN  token da API dessa chave
  * Variável opcional:
  *   ALLOWED_ORIGINS     origens aceitas, separadas por vírgula
- *                       padrão: https://geraldogg77.github.io
+ *                       padrão: https://cineminha.online e o endereço antigo
  */
 
 const TTL = 12 * 60 * 60;            // credenciais valem 12 horas
-const DEFAULT_ORIGINS = 'https://geraldogg77.github.io';
+const DEFAULT_ORIGINS = 'https://cineminha.online,https://www.cineminha.online,https://cineminha.pages.dev,https://geraldogg77.github.io';
 const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 export default {

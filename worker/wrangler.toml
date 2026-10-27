@@ -3,7 +3,7 @@ main = "turn.js"
 compatibility_date = "2026-10-01"
 
 [vars]
-ALLOWED_ORIGINS = "https://geraldogg77.github.io"
+ALLOWED_ORIGINS = "https://cineminha.online,https://www.cineminha.online,https://cineminha.pages.dev,https://geraldogg77.github.io"
 
 # Segredos (não coloque aqui):
 #   npx wrangler secret put TURN_KEY_ID
