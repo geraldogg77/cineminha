@@ -64,45 +64,164 @@ function needSound() { soundOk = false; const b = document.querySelector('#sound
 function audioSession() { try { if (navigator.audioSession) navigator.audioSession.type = VO.on ? 'play-and-record' : 'playback'; } catch (e) {} }
 const narrow = () => matchMedia('(max-width:900px)').matches;
 
-/* ---------- Fotos de perfil: ficam no navegador e só viajam pela conexão da sala ---------- */
-const avatars = {}; let myAv = '';
-const okAv = s => typeof s === 'string' && s.length < 900000 && /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(s) ? s : '';
-try { myAv = okAv(localStorage.getItem('tl-av') || ''); } catch (e) {}
+/* ---------- Fotos de perfil: imagens e GIFs de até 15 MB ----------
+   A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
+   quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
+   navegador guarda as fotos recebidas para as próximas visitas. */
+const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024;
+const avatars = {};             // nome → endereço da foto
+const avUrl = {}, avType = {}, avThumb = {};  // hash → endereço, tipo, miniatura estática
+let myAv = '', myAvH = '';
+const okH = h => typeof h === 'string' && /^[0-9a-f]{32}$/.test(h) ? h : '';
+const IDB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('cineminha', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('av');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('av', mode), q = fn(t.objectStore('av')); t.oncomplete = () => res(q && q.result); t.onerror = t.onabort = () => rej(t.error); }); };
+  return {get: k => tx('readonly', s => s.get(k)).catch(() => null), set: (k, v) => tx('readwrite', s => s.put(v, k)).catch(() => {}), del: k => tx('readwrite', s => s.delete(k)).catch(() => {})};
+})();
+async function sha(buf) { const d = new Uint8Array(await crypto.subtle.digest('SHA-256', buf)); return [...d.slice(0, 16)].map(b => b.toString(16).padStart(2, '0')).join(''); }
+/* confere pelo conteúdo que o arquivo é mesmo uma imagem */
+function sniff(buf) {
+  const u = new Uint8Array(buf, 0, Math.min(12, buf.byteLength)), s = String.fromCharCode(...u);
+  return s.startsWith('GIF8') ? 'image/gif' : u[0] === 0x89 && s.slice(1, 4) === 'PNG' ? 'image/png' : u[0] === 0xFF && u[1] === 0xD8 ? 'image/jpeg' : s.startsWith('RIFF') && s.slice(8, 12) === 'WEBP' ? 'image/webp' : '';
+}
+function avRegister(h, buf, type) {
+  if (avUrl[h]) return avUrl[h];
+  avType[h] = type; avUrl[h] = URL.createObjectURL(new Blob([buf], {type}));
+  /* miniatura estática para o fundo desfocado dos quadrados: borrar um GIF animado grande pesa no computador */
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = c.height = 64; const s = Math.min(img.width, img.height);
+    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 64, 64);
+    try { avThumb[h] = c.toDataURL('image/jpeg', .7); if (roomReady) render(); } catch (e) {}
+  };
+  img.src = avUrl[h];
+  return avUrl[h];
+}
 const pic = (el, src) => { el.textContent = ''; el.style.background = 'center/cover no-repeat url("' + src + '")'; };
 const initial = (el, n) => { el.textContent = (n[0] || '?').toUpperCase(); el.style.background = 'hsl(' + hue(n) + ',42%,40%)'; };
 const avatar = (el, n) => { const src = n === me && myAv ? myAv : avatars[n]; src ? pic(el, src) : initial(el, n); };
 function paintMe() {
   $$('.mepic').forEach(el => myAv ? pic(el, myAv) : initial(el, me || clean($('#ni') && $('#ni').value) || '?'));
 }
-function loadAvatar(file) {
-  return new Promise((res, rej) => {
-    if (!file || !file.type.startsWith('image/')) return rej('Escolha um arquivo de imagem.');
-    const fr = new FileReader();
-    fr.onerror = () => rej('Não foi possível ler esse arquivo.');
-    fr.onload = () => {
-      if (file.type === 'image/gif' && file.size <= 600 * 1024) return res(fr.result);
-      const img = new Image();
-      img.onerror = () => rej('Não foi possível abrir essa imagem.');
-      img.onload = () => {
-        const c = document.createElement('canvas'); c.width = c.height = 160;
-        const s = Math.min(img.width, img.height);
-        c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 160, 160);
-        if (file.type === 'image/gif') toast('GIF acima de 600 KB: foi usado só o primeiro quadro.', 'info');
-        res(c.toDataURL('image/webp', .85));
-      };
-      img.src = fr.result;
-    };
-    fr.readAsDataURL(file);
-  });
-}
-function setAv(src) {
-  myAv = src;
-  try { src ? localStorage.setItem('tl-av', src) : localStorage.removeItem('tl-av'); } catch (e) { toast('Sem espaço para salvar a foto. Ela vale só nesta sessão.', 'err'); }
+function avRefresh() {
   paintMe();
-  if (src) toast('Foto atualizada', 'ok');
-  if (!me) return;
-  toRoom({t: 'profile', av: myAv});
+  $$('.msg .av[data-n]').forEach(a => avatar(a, a.dataset.n));
+  if (roomReady) { renderMembers(); render(); }
 }
+async function loadAvatar(file) {
+  if (!file || !file.type.startsWith('image/')) throw 'Escolha um arquivo de imagem.';
+  const gif = file.type === 'image/gif';
+  if (gif && file.size <= AV_MAX) {
+    const buf = await file.arrayBuffer();
+    if (sniff(buf) !== 'image/gif') throw 'Esse arquivo não é um GIF válido.';
+    return {buf, type: 'image/gif'};
+  }
+  /* imagem comum, ou GIF acima de 15 MB: recorta um quadrado de 256 px */
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej('Não foi possível abrir essa imagem.'); i.src = url; });
+    const c = document.createElement('canvas'); c.width = c.height = 256; const s = Math.min(img.width, img.height);
+    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 256, 256);
+    if (gif) toast('GIF acima de 15 MB: foi usado só o primeiro quadro.', 'info');
+    const blob = await new Promise(r => c.toBlob(r, 'image/webp', .88));
+    return {buf: await blob.arrayBuffer(), type: blob.type || 'image/webp'};
+  } finally { URL.revokeObjectURL(url); }
+}
+async function useMine(buf, type, announce) {
+  const h = await sha(buf);
+  myAvH = h; myAv = avRegister(h, buf, type);
+  avRefresh();
+  if (announce && me) toRoom({t: 'profile', avh: h});
+}
+async function setAv(rec) {
+  if (!rec) {
+    myAv = ''; myAvH = ''; await IDB.del('me'); avRefresh();
+    if (me) toRoom({t: 'profile', avh: ''});
+    return;
+  }
+  await IDB.set('me', rec);
+  await useMine(rec.buf, rec.type, true);
+  toast(rec.type === 'image/gif' ? 'GIF de perfil atualizado' : 'Foto atualizada', 'ok');
+}
+/* foto salva: no IndexedDB; versões antigas do site guardavam no localStorage como texto */
+(async () => {
+  let rec = await IDB.get('me');
+  if (!rec) {
+    try {
+      const old = localStorage.getItem('tl-av');
+      if (old && old.startsWith('data:image/')) {
+        const buf = await (await fetch(old)).arrayBuffer(), type = sniff(buf);
+        if (type) { rec = {buf, type}; await IDB.set('me', rec); localStorage.removeItem('tl-av'); }
+      }
+    } catch (e) {}
+  }
+  if (rec && rec.buf) await useMine(rec.buf, rec.type, true);
+})();
+
+/* ---------- Troca das fotos pela sala ---------- */
+const avWant = new Set(), avIn = {}, avWait = {}, avAsked = new Set();
+async function avSave(h, buf, type) {
+  await IDB.set('h:' + h, {buf, type});
+  const list = ((await IDB.get('idx')) || []).filter(x => x.h !== h);
+  list.push({h, s: buf.byteLength, t: Date.now()});
+  list.sort((a, b) => a.t - b.t);
+  let total = list.reduce((a, x) => a + x.s, 0);
+  while (total > 200 * 1024 * 1024 && list.length > 1) { const x = list.shift(); total -= x.s; IDB.del('h:' + x.h); }
+  IDB.set('idx', list);
+}
+async function avCached(h) {
+  const r = await IDB.get('h:' + h);
+  if (!r || !r.buf) return false;
+  avRegister(h, r.buf, r.type || sniff(r.buf));
+  return true;
+}
+/* pede as fotos de quem está na sala e ainda não está neste navegador */
+async function avNeedAll() {
+  for (const u of lastList) {
+    const h = okH(u.avh);
+    if (!h || avUrl[h] || avWant.has(h)) continue;
+    avWant.add(h);
+    if (await avCached(h)) { avWant.delete(h); avRefresh(); continue; }
+    toRoom({t: 'avget', h});
+  }
+}
+const busy = conn => (conn.dataChannel ? conn.dataChannel.bufferedAmount : 0) + (conn.bufferSize || 0) * AV_CHUNK;
+async function avSend(conn, h) {
+  if (!conn || !conn.open || !avUrl[h]) return;
+  const buf = await (await fetch(avUrl[h])).arrayBuffer(), n = Math.ceil(buf.byteLength / AV_CHUNK);
+  for (let i = 0; i < n; i++) {
+    /* manda aos poucos: o chat e os avisos da sala continuam passando no meio */
+    while (busy(conn) > 1024 * 1024) { await new Promise(r => setTimeout(r, 40)); if (!conn.open) return; }
+    conn.send({t: 'avc', h, i, n, size: buf.byteLength, d: buf.slice(i * AV_CHUNK, (i + 1) * AV_CHUNK)});
+  }
+}
+async function avRecv(d) {
+  const h = okH(d.h); if (!h || avUrl[h]) return;
+  const size = +d.size, n = +d.n, i = +d.i;
+  const part = d.d instanceof ArrayBuffer ? d.d : d.d && ArrayBuffer.isView(d.d) ? d.d : null;
+  if (!part || !(size > 0 && size <= AV_MAX + AV_CHUNK && n === Math.ceil(size / AV_CHUNK) && i >= 0 && i < n)) return;
+  let p = avIn[h]; if (!p) p = avIn[h] = {parts: new Array(n), got: 0, n, size};
+  if (p.n !== n || p.parts[i]) return;
+  p.parts[i] = part; p.got++; p.at = Date.now();
+  if (p.got < n) return;
+  delete avIn[h];
+  const buf = await new Blob(p.parts).arrayBuffer(), type = sniff(buf);
+  /* só aceita se o conteúdo for o mesmo da foto pedida e for uma imagem */
+  if (buf.byteLength !== size || !type || await sha(buf) !== h) { avWant.delete(h); return; }
+  avRegister(h, buf, type); avSave(h, buf, type); avWant.delete(h);
+  if (isHost) { const w = avWait[h]; delete avWait[h]; if (w) w.forEach(id => { const g = guests.get(id); if (g) avSend(g.conn, h); }); }
+  avRefresh();
+}
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(avIn).forEach(h => { if (now - (avIn[h].at || now) > 30000) { delete avIn[h]; avWant.delete(h); } });
+  if (roomReady) avNeedAll();
+}, 5000);
 
 /* ---------- Toasts ---------- */
 const TI = {ok: 'check', err: 'alert', info: 'info'};
@@ -755,7 +874,7 @@ function addMsg(m) {
     const cont = lastAuthor && lastAuthor.name === m.name && m.ts - lastAuthor.ts < 180000;
     d.className = 'msg' + (cont ? ' cont' : '');
     d.innerHTML = '<div class="av"></div><div><div class="mh"><b></b><i class="tag" hidden>Anfitrião</i><time></time></div><p></p></div>';
-    avatar(d.querySelector('.av'), m.name);
+    d.querySelector('.av').dataset.n = m.name; avatar(d.querySelector('.av'), m.name);
     const b = d.querySelector('b'); b.textContent = m.name; b.style.color = 'hsl(' + hue(m.name) + ',65%,' + (S.theme === 'light' ? '36%' : '72%') + ')';
     d.querySelector('.tag').hidden = !m.host;
     const tm = d.querySelector('time'), dt = new Date(m.ts);
@@ -785,7 +904,7 @@ const byId = id => lastList.find(u => u.id === id);
 const liveIds = () => lastList.filter(u => u.live).map(u => u.id);
 function renderMembers() {
   const list = lastList;
-  list.forEach(u => { u.av = okAv(u.av); if (u.av) avatars[u.name] = u.av; else delete avatars[u.name]; });
+  list.forEach(u => { u.avh = okH(u.avh); const url = u.avh && avUrl[u.avh]; if (url) avatars[u.name] = url; else delete avatars[u.name]; });
   const el = $('#members'), known = new Set([...el.children].map(c => c.dataset.id));
   el.textContent = '';
   list.forEach(u => {
@@ -813,7 +932,7 @@ function renderMembers() {
     }
     el.append(r);
     if (u.host) {
-      const ri = $('#roomIcon'); if (u.av) pic(ri, u.av); else { ri.style.background = ''; ri.textContent = (u.name[0] || '?').toUpperCase(); }
+      const ri = $('#roomIcon'), ru = u.avh && avUrl[u.avh]; if (ru) pic(ri, ru); else { ri.style.background = ''; ri.textContent = (u.name[0] || '?').toUpperCase(); }
       const t = 'Sala de ' + u.name; $('#roomName').textContent = $('#roomT').textContent = t; document.title = t + ' · Cineminha';
       ri.dataset.tip = t;
     }
@@ -869,8 +988,8 @@ function paintTile(R, u) {
   cl.toggle('me', mine); cl.toggle('scr', !!s); cl.toggle('cam', !!c); cl.toggle('wait', !!u.live && !s); cl.toggle('focus', f);
   setSrc(R.sv, s, !mine); setSrc(R.cv, c, false);
   avatar(R.av, u.name);
-  const src = mine && myAv ? myAv : avatars[u.name];
-  R.bg.style.backgroundImage = src ? 'url("' + src + '")' : ''; cl.toggle('hasbg', !!src);
+  const src = mine && myAv ? myAv : avatars[u.name], th = avThumb[mine ? myAvH : u.avh];
+  R.bg.style.backgroundImage = src ? 'url("' + (th || src) + '")' : ''; cl.toggle('hasbg', !!src);
   R.el.style.setProperty('--tbg', 'hsl(' + hue(u.name) + ',28%,' + (S.theme === 'light' ? '58%' : '24%') + ')');
   R.tag.textContent = mine ? u.name + ' (você)' : u.name;
   R.moff.style.display = u.mic ? 'none' : '';
@@ -1113,8 +1232,10 @@ function onMsg(d) {
     lastList = Array.isArray(d.list) ? d.list : []; roomReady = true;
     if (firstReady && S.mxMic && !VO.on) voiceMic();
     const ids = new Set(lastList.map(u => u.id)); [...outCalls.keys()].forEach(id => { if (!ids.has(id)) closeOut(id); });
-    renderMembers(); reconcile(); syncVoice(); syncCam();
+    renderMembers(); reconcile(); syncVoice(); syncCam(); avNeedAll();
   }
+  else if (d.t === 'avget') { if (!isHost && okH(d.h) && d.h === myAvH) avSend(hostConn, d.h); }
+  else if (d.t === 'avc') { if (!isHost) avRecv(d); }
   else if (d.t === 'watchreq') sendStream(d.from, d.q, d.re);
   else if (d.t === 'unwatchreq') closeOut(d.from);
   else if (d.t === 'pause' && d.id !== myId && scr.has(d.id)) toast(d.v ? d.name + ' pausou a imagem' : d.name + ' retomou a imagem', d.v ? 'info' : 'ok');
@@ -1125,8 +1246,8 @@ const deliver = (id, m) => { if (id === myId) return onMsg(m); const g = guests.
 function post(m) { m.t = 'msg'; addMsg(m); bcast(m); }
 function sys(text) { const m = {t: 'sys', text}; addMsg(m); bcast(m); }
 function users() {
-  const list = [{id: myId, name: me, host: true, av: myAv, live: !!stream, mic: VO.on, cam: !!myCam}];
-  guests.forEach((g, id) => g.name && list.push({id, name: g.name, av: g.av, live: !!g.live, mic: !!g.mic, cam: !!g.cam}));
+  const list = [{id: myId, name: me, host: true, avh: myAvH, live: !!stream, mic: VO.on, cam: !!myCam}];
+  guests.forEach((g, id) => g.name && list.push({id, name: g.name, avh: g.avh, live: !!g.live, mic: !!g.mic, cam: !!g.cam}));
   bcast({t: 'users', list}); onMsg({t: 'users', list});
 }
 function onRoom(from, d) {
@@ -1134,10 +1255,18 @@ function onRoom(from, d) {
   if (!d || (from !== myId && !g)) return;
   const name = g ? g.name || 'Convidado' : me;
   if (d.t === 'hello' && g) {
-    const fresh = !g.name; g.name = clean(d.name) || 'Convidado'; g.av = okAv(d.av); g.live = !!d.live; g.mic = !!d.mic; g.cam = !!d.cam;
+    const fresh = !g.name; g.name = clean(d.name) || 'Convidado'; g.avh = okH(d.avh); g.live = !!d.live; g.mic = !!d.mic; g.cam = !!d.cam;
     if (fresh) sys(g.name + ' entrou na sala'); users();
   }
-  else if (d.t === 'profile') { if (g) g.av = okAv(d.av); users(); }
+  else if (d.t === 'profile') { if (g) g.avh = okH(d.avh); users(); }
+  else if (d.t === 'avget') {
+    const h = okH(d.h); if (!h) return;
+    if (avUrl[h]) { if (g) avSend(g.conn, h); return; }
+    if (g) (avWait[h] = avWait[h] || new Set()).add(from);
+    const owner = [...guests.entries()].find(([, x]) => x.avh === h);
+    if (owner && !avAsked.has(h)) { avAsked.add(h); deliver(owner[0], {t: 'avget', h}); setTimeout(() => avAsked.delete(h), 30000); }
+  }
+  else if (d.t === 'avc' && g && g.avh === okH(d.h)) avRecv(d);
   else if (d.t === 'voice') { if (g) g.mic = !!d.on; users(); }
   else if (d.t === 'cam') { if (g) g.cam = !!d.on; users(); }
   else if (d.t === 'msg') { const text = String(d.text || '').trim().slice(0, 500); if (text) post({name, text, ts: Date.now(), host: !g}); }
@@ -1199,7 +1328,7 @@ function connect() {
   if (hostConn && hostConn.open) return;
   const c = peer.connect(target, {reliable: true}); hostConn = c;
   if (!c) return retry(3000);
-  c.on('open', () => { if (hostConn !== c) return; c.send({t: 'hello', name: me, av: myAv, live: !!stream, mic: VO.on, cam: !!myCam}); setStatus('Conectado', 'Carregando a sala…'); });
+  c.on('open', () => { if (hostConn !== c) return; c.send({t: 'hello', name: me, avh: myAvH, live: !!stream, mic: VO.on, cam: !!myCam}); setStatus('Conectado', 'Carregando a sala…'); });
   c.on('data', d => { if (hostConn === c) onMsg(d); });
   c.on('close', () => {
     if (hostConn !== c || full) return;
@@ -1344,8 +1473,8 @@ if (S.helperSeen && isWin) { helperConnect(false); setInterval(() => { if (!HP.o
 if (target) { $('#welT').textContent = 'Entrar na sala'; $('#welD').textContent = 'Escolha como você vai aparecer para os outros e no chat.'; $('#joinB').textContent = 'Entrar na sala'; }
 else $('#joinB').textContent = 'Criar minha sala';
 $$('.pick').forEach(b => b.onclick = () => $('#avFile').click());
-$$('.avrm').forEach(b => b.onclick = () => { if (myAv) { setAv(''); toast('Foto removida', 'ok'); } });
-$('#avFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { setAv(await loadAvatar(f)); } catch (m) { toast(String(m), 'err'); } };
+$$('.avrm').forEach(b => b.onclick = async () => { if (myAv) { await setAv(null); toast('Foto removida', 'ok'); } });
+$('#avFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { await setAv(await loadAvatar(f)); } catch (m) { toast(typeof m === 'string' ? m : 'Não foi possível usar essa imagem.', 'err'); } };
 $('#ni').addEventListener('input', paintMe);
 $('#nf').onsubmit = e => {
   e.preventDefault();

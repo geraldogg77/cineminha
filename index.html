@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=24">
+<link rel="stylesheet" href="styles.css?v=25">
 </head>
 <body class="booting">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -214,7 +214,7 @@
  </div>
  <div class="pane" id="p-ap" hidden>
   <div class="f"><span class="fl">Seu perfil</span><div class="pickrow"><button type="button" class="pick mepic" id="avPrev2" aria-label="Trocar foto de perfil"></button>
-   <div><small>Imagem ou GIF. GIFs de até 600 KB mantêm a animação. A foto fica salva só neste navegador.</small><button type="button" class="link avrm">Remover foto</button></div></div></div>
+   <div><small>Imagem ou GIF de até 15 MB, com animação. A foto fica salva neste navegador e vai para quem estiver na sala.</small><button type="button" class="link avrm">Remover foto</button></div></div></div>
   <div class="f"><span class="fl" id="l-theme">Tema</span><select data-k="theme" aria-labelledby="l-theme"><option value="dark" data-d="Escuro com tom de cinema">Sala escura</option><option value="classic" data-d="Cinza neutro">Grafite</option><option value="oled" data-d="Preto total para telas OLED">Meia-noite</option><option value="light">Claro</option></select></div>
   <div class="f"><span class="fl">Cor de destaque</span><div class="sw">
    <button data-c="#5B7CFA" style="--c:#5B7CFA" aria-label="Azul"></button><button data-c="#F2B544" style="--c:#F2B544" aria-label="Âmbar"></button><button data-c="#E5484D" style="--c:#E5484D" aria-label="Vermelho"></button><button data-c="#3DD68C" style="--c:#3DD68C" aria-label="Verde"></button><button data-c="#EC5FA8" style="--c:#EC5FA8" aria-label="Rosa"></button><button data-c="#9D7BF5" style="--c:#9D7BF5" aria-label="Lilás"></button>
@@ -241,13 +241,13 @@
   <div class="mark"><svg class="i"><use href="#i-logo"/></svg></div>
   <h2 id="welT">Bem-vindo ao Cineminha</h2><p id="welD">Escolha como quer aparecer no chat e na sala.</p>
   <div class="pickrow"><button type="button" class="pick mepic" id="avPrev" aria-label="Escolher foto de perfil"></button>
-   <div><small>Foto de perfil opcional. Aceita imagem ou GIF e fica salva só neste navegador.</small><button type="button" class="link avrm">Remover foto</button></div></div>
+   <div><small>Foto de perfil opcional. Aceita imagem ou GIF animado de até 15 MB e fica salva neste navegador.</small><button type="button" class="link avrm">Remover foto</button></div></div>
   <div class="field"><input id="ni" maxlength="20" required autofocus placeholder=" " autocomplete="off"><label for="ni">Seu apelido</label></div>
   <button class="btn go big" id="joinB">Entrar na sala</button>
  </form>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>
