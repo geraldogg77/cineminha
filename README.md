@@ -8,7 +8,11 @@ Transmita sua tela para até 4 amigos direto do navegador, com áudio e chat ao 
 
 1. Abra o site, escolha um apelido e clique em **Criar minha sala**. Quem cria a sala é o anfitrião: a aba dele precisa ficar aberta para a sala funcionar.
 2. Copie o link e envie. Quem abrir o link entra na sala.
-3. Qualquer pessoa pode clicar em **Transmitir minha tela**. Várias pessoas podem transmitir ao mesmo tempo, e cada uma escolhe qual tela assistir pelas abas acima do vídeo ou pela lista de pessoas.
+3. Cada pessoa aparece num quadrado com a foto no meio. Quem clica em **Transmitir minha tela** (botão com a tela, na barra embaixo) passa a mostrar a tela no próprio quadrado. Várias pessoas podem transmitir ao mesmo tempo.
+4. A **câmera** (na barra embaixo ou no menu do seu perfil) aparece no seu quadrado. Se você também transmitir a tela, a câmera vira uma janelinha no canto.
+5. Clique num quadrado para ampliar; os outros ficam numa fileira embaixo. Clique de novo ou aperte Esc para voltar à grade. Dois cliques abrem em tela cheia.
+
+As telas que não estão ampliadas chegam em qualidade mais leve, para não pesar no upload de quem transmite.
 
 Funciona melhor no Chrome ou Edge no computador. Quem assiste pode usar qualquer navegador, inclusive no celular.
 
@@ -61,6 +65,7 @@ Sem o Cineminha Áudio também dá: instale o VB-CABLE (gratuito), mande a saíd
 | M | Som de quem você assiste |
 | V | Ligar ou desligar seu microfone |
 | D | Ligar ou desligar o som da sala |
+| Esc | Voltar à grade |
 | P | Pausar sua imagem |
 
 ## Servidor TURN (Cloudflare)

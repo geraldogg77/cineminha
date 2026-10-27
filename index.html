@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20">
+<link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body class="booting">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -41,6 +41,11 @@
 <symbol id="i-apps" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
 <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
 <symbol id="i-deaf" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 13.7-5.6M20 12v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/><path d="M3 3l18 18"/></symbol>
+<symbol id="i-cam" viewBox="0 0 24 24"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="m15.5 10.5 6-3.5v10l-6-3.5"/></symbol>
+<symbol id="i-camoff" viewBox="0 0 24 24"><path d="M15.5 10.5 21.5 7v10l-3.2-1.9M10 6h3.5a2 2 0 0 1 2 2v3M15.5 15v1a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1M3 3l18 18"/></symbol>
+<symbol id="i-share" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4M12 13.5V8M9.5 10.5 12 8l2.5 2.5"/></symbol>
+<symbol id="i-sharestop" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4M9.8 8.3l4.4 4.4M14.2 8.3l-4.4 4.4"/></symbol>
+<symbol id="i-expand" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
 <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
 <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
 <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></symbol>
@@ -76,7 +81,8 @@
   </div>
   <div class="user"><div class="av on mepic" id="meAv"></div><div class="ui"><b id="meName">Você</b><small id="meRole"></small></div><span class="sp"></span>
    <button class="ibtn micB" data-act="mic" data-tip="Microfone" data-kbd="V" aria-label="Ligar ou desligar microfone"><svg class="i"><use href="#i-micoff"/></svg></button>
-   <button class="ibtn" id="headB" data-act="deaf" data-tip="Desligar o som da sala" data-kbd="D" aria-label="Ligar ou desligar o som da sala"><svg class="i"><use href="#i-headset"/></svg></button>
+   <button class="ibtn camB" data-act="cam" data-tip="Ligar câmera" aria-label="Ligar câmera"><svg class="i"><use href="#i-camoff"/></svg></button>
+   <button class="ibtn deafB" id="headB" data-act="deaf" data-tip="Desligar o som da sala" data-kbd="D" aria-label="Ligar ou desligar o som da sala"><svg class="i"><use href="#i-headset"/></svg></button>
    <button class="ibtn" data-act="settings" data-tip="Configurações" aria-label="Configurações"><svg class="i"><use href="#i-cfg"/></svg></button></div>
  </div>
 </aside>
@@ -93,37 +99,35 @@
  </header>
  <div class="body">
   <div class="center">
-   <div class="screens" id="screens" role="tablist" aria-label="Telas ao vivo" hidden></div>
-   <section class="stage" id="stage" aria-label="Tela da transmissão">
-    <video id="v" autoplay playsinline muted></video>
+   <section class="stage" id="stage" aria-label="Sala">
+    <div class="grid" id="grid"></div>
     <div class="ph" id="ph">
      <div class="beam" aria-hidden="true"></div>
-     <div class="avs" id="avs"></div>
-     <strong id="phText">Pronto para transmitir</strong><span id="phSub"></span>
-     <div class="pills"><button class="btn go big" id="goBig"><svg class="i"><use href="#i-play"/></svg><span>Iniciar transmissão</span></button>
-      <button class="btn ghost big" data-act="invite"><svg class="i"><use href="#i-link"/></svg><span>Copiar convite</span></button></div>
+     <strong id="phText">Conectando…</strong><span id="phSub"></span>
     </div>
-    <div class="chip" id="res"></div>
     <pre class="stats" id="stats" hidden></pre>
     <button class="sound" id="sound" hidden><svg class="i"><use href="#i-vol"/></svg>Ativar som</button>
-    <div class="dock" id="dock">
-     <div class="pg">
-      <button class="ibtn mine" data-act="pause" data-tip="Pausar imagem" data-kbd="P" aria-label="Pausar imagem"><svg class="i"><use href="#i-pause"/></svg></button>
-      <button class="ibtn mine micB" data-act="mic" data-tip="Microfone" data-kbd="V" aria-label="Ligar ou desligar microfone"><svg class="i"><use href="#i-micoff"/></svg></button>
-      <button class="ibtn theirs" data-act="mute" id="muteB" data-tip="Som" data-kbd="M" aria-label="Ativar ou desativar som"><svg class="i"><use href="#i-vol"/></svg></button>
-      <input class="theirs rng" type="range" id="vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+    <div class="callbar" id="callbar">
+     <div class="cbl">
+      <button class="ibtn mine" data-act="pause" data-tip="Pausar sua imagem" data-kbd="P" aria-label="Pausar sua imagem"><svg class="i"><use href="#i-pause"/></svg></button>
+      <button class="ibtn theirs" data-act="mute" id="muteB" data-tip="Som das telas" data-kbd="M" aria-label="Ligar ou desligar o som das telas"><svg class="i"><use href="#i-vol"/></svg></button>
+      <input class="theirs rng" type="range" id="vol" min="0" max="1" step="0.01" value="1" aria-label="Volume das telas">
      </div>
-     <span class="sp"></span>
-     <div class="pg">
+     <div class="cbm">
+      <button class="cb camB" data-act="cam" data-tip="Ligar câmera" aria-label="Ligar câmera"><svg class="i"><use href="#i-camoff"/></svg></button>
+      <button class="cb" id="go" data-tip="Transmitir minha tela" aria-label="Transmitir minha tela"><svg class="i"><use href="#i-share"/></svg></button>
+      <button class="cb micB" data-act="mic" data-tip="Ligar microfone" data-kbd="V" aria-label="Ligar ou desligar microfone"><svg class="i"><use href="#i-micoff"/></svg></button>
+      <button class="cb deafB" data-act="deaf" data-tip="Desligar o som da sala" data-kbd="D" aria-label="Ligar ou desligar o som da sala"><svg class="i"><use href="#i-headset"/></svg></button>
+     </div>
+     <div class="cbr">
       <button class="ibtn" data-act="stats" data-tip="Estatísticas" data-kbd="S" aria-label="Estatísticas"><svg class="i"><use href="#i-stats"/></svg></button>
-      <button class="ibtn" data-act="pip" data-tip="Imagem sobre imagem" aria-label="Imagem sobre imagem"><svg class="i"><use href="#i-pip"/></svg></button>
-      <button class="ibtn" data-act="theater" data-tip="Modo cinema" data-kbd="T" aria-label="Modo cinema"><svg class="i"><use href="#i-theater"/></svg></button>
+      <button class="ibtn hm" data-act="pip" data-tip="Imagem sobre imagem" aria-label="Imagem sobre imagem"><svg class="i"><use href="#i-pip"/></svg></button>
+      <button class="ibtn hm" data-act="theater" data-tip="Modo cinema" data-kbd="T" aria-label="Modo cinema"><svg class="i"><use href="#i-theater"/></svg></button>
       <button class="ibtn" data-act="fs" data-tip="Tela cheia" data-kbd="F" aria-label="Tela cheia"><svg class="i"><use href="#i-max"/></svg></button>
      </div>
     </div>
    </section>
    <section class="ctl" aria-label="Sua transmissão">
-    <button class="btn go" id="go"><svg class="i"><use href="#i-play"/></svg><span>Iniciar transmissão</span></button>
     <div class="linkbox"><svg class="i"><use href="#i-link"/></svg><input type="text" id="link" readonly value="Gerando link…" aria-label="Link para assistir"></div>
     <button class="btn" id="copy"><span class="swap"><svg class="i a"><use href="#i-copy"/></svg><svg class="i b"><use href="#i-check"/></svg></span><span id="copyT">Copiar link</span></button>
     <button class="btn icon" data-act="mixer" data-tip="Mixer de áudio" aria-label="Mixer de áudio"><svg class="i"><use href="#i-mix"/></svg></button>
@@ -147,8 +151,13 @@
    <div class="mix">
     <div class="mrow" data-src="mic">
      <div class="mtop"><span class="mic"><svg class="i"><use href="#i-mic"/></svg></span><span class="mt"><b>Microfone</b><small>Todos na sala ouvem você, transmitindo ou não</small></span><label class="switch"><input type="checkbox" data-k="mxMic" aria-label="Microfone"><i aria-hidden="true"></i></label></div>
+     <p class="micwarn" id="micWarn" hidden></p>
      <select data-k="micDev" class="devsel" aria-label="Microfone usado"><option value="">Microfone padrão</option></select>
      <div class="mbot"><input class="rng" type="range" data-k="vMic" data-n min="0" max="150" step="1" aria-label="Volume do microfone"><span class="meter" data-m="mic"><i></i></span><b class="pct" data-pct="vMic"></b></div>
+    </div>
+    <div class="mrow off" data-src="cam">
+     <div class="mtop"><span class="mic"><svg class="i"><use href="#i-cam"/></svg></span><span class="mt"><b>Câmera</b><small>Aparece no seu quadrado, também enquanto você transmite a tela</small></span><label class="switch"><input type="checkbox" id="camSw" aria-label="Câmera"><i aria-hidden="true"></i></label></div>
+     <select data-k="camDev" class="devsel" aria-label="Câmera usada"><option value="">Câmera padrão</option></select>
     </div>
     <div class="mrow" data-src="out">
      <div class="mtop"><span class="mic"><svg class="i"><use href="#i-headset"/></svg></span><span class="mt"><b>Saída de áudio</b><small>Onde você ouve as vozes e as telas</small></span><button type="button" class="btn sm" id="outTest">Testar</button></div>
@@ -157,7 +166,7 @@
     </div>
    </div>
   </section>
-  <section class="f" id="mixSec"><span class="fl">Áudio da sua transmissão</span>
+  <section class="f" id="mixSec"><span class="fl">Áudio da sua transmissão <button type="button" class="link" id="monB" data-tip="Use fone para não dar eco">Ouvir o que estou transmitindo</button></span>
    <div class="mix">
     <div class="mrow apps" data-src="apps">
      <div class="mtop"><span class="mic"><svg class="i"><use href="#i-apps"/></svg></span><span class="mt"><b>Som dos apps</b><small id="appsSub">Escolha programa por programa</small></span><label class="switch"><input type="checkbox" data-k="mxApps" aria-label="Som dos apps"><i aria-hidden="true"></i></label></div>
@@ -165,11 +174,11 @@
       <div class="applist" id="appList" hidden></div>
       <div class="appget" id="appGet">
        <p id="appGetT">Para escolher os apps, como Spotify, Discord e jogos, instale o <b>Cineminha Áudio</b>: um programa de 650 KB para Windows 10 e 11 que fica na bandeja, perto do relógio.</p>
-       <div class="row"><a class="btn go" id="appDl" href="download/CineminhaAudio.exe?v=1.2.0" download><svg class="i"><use href="#i-download"/></svg><span>Baixar Cineminha Áudio</span></a><button type="button" class="btn" id="appConn">Já está aberto, conectar</button></div>
+       <div class="row"><a class="btn go" id="appDl" href="download/CineminhaAudio.exe?v=1.3.1" download><svg class="i"><use href="#i-download"/></svg><span>Baixar Cineminha Áudio</span></a><button type="button" class="btn" id="appConn">Já está aberto, conectar</button></div>
        <small class="fh" id="appGetH" hidden>Abra o arquivo baixado. Se o Windows avisar que protegeu o computador, clique em <b>Mais informações</b> › <b>Executar assim mesmo</b>. Se o navegador pedir acesso a dispositivos locais, clique em <b>Permitir</b>.</small>
       </div>
      </div>
-     <div class="appfoot" id="appFoot" hidden><span id="appVer"></span><a class="btn sm" id="appDl2" href="download/CineminhaAudio.exe?v=1.2.0" download><svg class="i"><use href="#i-download"/></svg><span>Baixar a versão mais nova</span></a></div>
+     <div class="appfoot" id="appFoot" hidden><span id="appVer"></span><a class="btn sm" id="appDl2" href="download/CineminhaAudio.exe?v=1.3.1" download><svg class="i"><use href="#i-download"/></svg><span>Baixar a versão mais nova</span></a></div>
      <div class="mbot"><input class="rng" type="range" data-k="vApps" data-n min="0" max="150" step="1" aria-label="Volume dos apps"><span class="meter" data-m="apps"><i></i></span><b class="pct" data-pct="vApps"></b></div>
     </div>
     <div class="mrow" data-src="screen">
@@ -191,8 +200,7 @@
      <li>Para continuar ouvindo esses apps, abra o Painel de som do Windows › Gravação › CABLE Output › Propriedades › Escutar, marque “Escutar este dispositivo” e escolha seu fone.</li></ol>
    </details>
   </section>
-  <div class="f"><span class="fl" id="l-src">Fonte do vídeo</span><select data-k="src" aria-labelledby="l-src"><option value="screen" data-d="Tela, janela ou aba">Tela</option><option value="cam" data-d="Câmera do computador">Webcam</option></select><small class="fh">Vale a partir da próxima transmissão. Na webcam, a voz vai pelo microfone da sala.</small></div>
-  <div class="f" id="camSel" hidden><span class="fl" id="l-cam">Câmera</span><select data-k="camDev" aria-labelledby="l-cam"><option value="">Câmera padrão do sistema</option></select></div>
+  <div class="f"><span class="fl" id="l-src">Fonte do vídeo</span><select data-k="src" aria-labelledby="l-src"><option value="screen" data-d="Tela, janela ou aba">Tela</option><option value="cam" data-d="Câmera do computador">Webcam</option></select><small class="fh">Vale a partir da próxima transmissão. Webcam transmite a câmera escolhida em Voz na sala com a qualidade desta seção, no lugar da tela. Para mostrar a câmera junto com a tela, use o botão de câmera.</small></div>
   <div class="f"><span class="fl">Predefinições</span><div class="chips">
    <button class="chp" data-pre="bal">Equilibrada</button><button class="chp" data-pre="alta">Alta</button><button class="chp" data-pre="max">Máxima</button><button class="chp" data-pre="txt">Texto nítido</button></div></div>
   <div class="f"><span class="fl" id="l-res">Resolução</span><select data-k="res" data-n aria-labelledby="l-res"><option value="720">720p</option><option value="1080" data-d="Full HD">1080p</option><option value="1440" data-d="2K">1440p</option><option value="2160" data-d="4K, exige upload alto">2160p</option></select></div>
@@ -213,7 +221,7 @@
    <label class="custom" aria-label="Cor personalizada"><input type="color" id="acc"><svg class="i"><use href="#i-plus"/></svg></label></div></div>
   <label class="tg"><span><b>Reduzir animações</b><small>Desliga transições e efeitos de movimento.</small></span><input type="checkbox" data-k="calm"><i aria-hidden="true"></i></label>
   <div class="f"><span class="fl">Atalhos</span><ul class="keys">
-   <li><kbd>F</kbd>Tela cheia</li><li><kbd>T</kbd>Modo cinema</li><li><kbd>C</kbd>Chat</li><li><kbd>S</kbd>Estatísticas</li><li><kbd>M</kbd>Som de quem você assiste</li><li><kbd>V</kbd>Microfone</li><li><kbd>D</kbd>Som da sala</li><li><kbd>P</kbd>Pausar sua imagem</li></ul></div>
+   <li><kbd>F</kbd>Tela cheia</li><li><kbd>T</kbd>Modo cinema</li><li><kbd>C</kbd>Chat</li><li><kbd>S</kbd>Estatísticas</li><li><kbd>M</kbd>Som de quem você assiste</li><li><kbd>V</kbd>Microfone</li><li><kbd>Esc</kbd>Voltar à grade</li><li><kbd>D</kbd>Som da sala</li><li><kbd>P</kbd>Pausar sua imagem</li></ul></div>
  </div>
 </aside>
 
@@ -240,6 +248,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
