@@ -810,3 +810,20 @@ button.achip:hover{background:var(--bg3)}
 .nav.lockN.on{color:var(--warn)}
 .nav.lockN.on .i{color:var(--warn)}
 .kickB:hover{color:var(--live)!important}
+
+/* ---------- Volume por pessoa ---------- */
+.pvol{position:fixed;z-index:96;width:260px;padding:14px;border-radius:16px;background:var(--bg3);box-shadow:var(--shadow),0 0 0 1px var(--line2) inset;display:grid;gap:12px;
+  opacity:0;transform:translateY(-4px) scale(.97);transition:opacity .16s var(--ease),transform .22s var(--spring)}
+.pvol.in{opacity:1;transform:none}
+.pvol[hidden]{display:none}
+.pvh{display:flex;align-items:center;gap:10px;min-width:0}
+.pvh .av{width:30px;height:30px;font-size:13px;flex:none}
+.pvh b{color:var(--head);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pvr{display:flex;align-items:center;gap:10px}
+.pvr .i{width:18px;height:18px;color:var(--muted);flex:none}
+.pvr .rng{flex:1}
+.pvp{width:40px;text-align:right;font-size:13px;font-weight:600;color:var(--head);font-variant-numeric:tabular-nums}
+.pvm{justify-self:stretch}
+.vmute.low{color:var(--accent)}
+.ttools .tvol[hidden]{display:none}
+.pvr .rng{background:none!important;box-shadow:none!important;border:0!important;padding:0!important;height:20px!important;min-width:0;width:auto}
