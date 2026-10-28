@@ -99,7 +99,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 45;   // igual ao ?v= do app.js no index.html
+const APP_VER = 46;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -2381,6 +2381,7 @@ function pickFmt(file, sizes) {
 async function gpLoad(reset) {
   if (!KLIPY_KEY) return;
   if (reset) { GP.page = 1; GP.more = true; gpGrid.textContent = ''; gpGrid.scrollTop = 0; }
+  if (!gpGrid.querySelector('.gpcol')) { gpGrid.textContent = ''; for (let i = 0; i < 2; i++) { const c = document.createElement('div'); c.className = 'gpcol'; gpGrid.append(c); } }
   if (GP.busy || !GP.more) return;
   GP.busy = true; const seq = ++GP.seq; gpBox.classList.add('busy');
   const key = GP.tab + '|' + GP.q + '|' + GP.page;
@@ -2405,13 +2406,15 @@ async function gpLoad(reset) {
       if (pv.w && pv.h) b.style.aspectRatio = pv.w + ' / ' + pv.h;
       const img = document.createElement('img'); img.loading = 'lazy'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.alt = ''; img.src = pv.u;
       img.onload = () => b.classList.add('ok');
-      b.append(img); b.onclick = () => sendGif({...full, k: GP.tab}); gpGrid.append(b);
+      b.append(img); b.onclick = () => sendGif({...full, k: GP.tab}); gpCol().append(b);
     });
-    if (!gpGrid.children.length) gpGrid.innerHTML = '<p class="gpe">Nada encontrado. Tente outra palavra.</p>';
+    if (!gpGrid.querySelector('.gpi')) gpGrid.innerHTML = '<p class="gpe">Nada encontrado. Tente outra palavra.</p>';
   } catch (e) {
-    if (!gpGrid.children.length) gpGrid.innerHTML = '<p class="gpe">Não foi possível carregar os GIFs agora. Tente de novo em instantes.</p>';
+    if (!gpGrid.querySelector('.gpi')) gpGrid.innerHTML = '<p class="gpe">Não foi possível carregar os GIFs agora. Tente de novo em instantes.</p>';
   } finally { if (seq === GP.seq) { GP.busy = false; gpBox.classList.remove('busy'); } }
 }
+/* duas colunas lado a lado; cada GIF vai para a mais curta (mosaico que rola para baixo) */
+function gpCol() { const cs = [...gpGrid.querySelectorAll('.gpcol')]; return cs.reduce((a, c) => c.offsetHeight < a.offsetHeight ? c : a, cs[0]); }
 function sendGif(g) {
   const ok = gifOk(g); if (!ok) return;
   const m = {t: 'msg', text: '', gif: {u: ok.u, w: ok.w, h: ok.h, k: g.k}}; if (replyTo) m.re = replyTo.id;
@@ -2422,7 +2425,7 @@ function openGif() {
   if (!KLIPY_KEY) return toast('A biblioteca de GIFs ainda está sendo configurada. Por enquanto, envie pelo botão de imagem.', 'info');
   gpBox.hidden = false; requestAnimationFrame(() => gpBox.classList.add('in'));
   $('#gifB').setAttribute('aria-expanded', 'true');
-  if (!gpGrid.children.length) gpLoad(true);
+  if (!gpGrid.querySelector('.gpi')) gpLoad(true);
   if (!matchMedia('(hover:none)').matches) setTimeout(() => gpIn.focus(), 60);
 }
 function closeGif() { gpBox.classList.remove('in'); $('#gifB').setAttribute('aria-expanded', 'false'); setTimeout(() => { if (!gpBox.classList.contains('in')) gpBox.hidden = true; }, 180); }

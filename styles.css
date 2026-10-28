@@ -895,14 +895,15 @@ button.achip:hover{background:var(--bg3)}
 .gps .i{width:16px;height:16px;color:var(--muted);flex:none}
 .gps input{flex:1;min-width:0;height:100%;border:0;background:none;color:var(--text);font:inherit;font-size:14px;outline:0}
 .gps input::-webkit-search-cancel-button{filter:invert(.6)}
-.gpgrid{flex:1;min-height:0;overflow-y:auto;columns:2 120px;column-gap:6px;padding-right:2px;scrollbar-width:thin}
-.gpi{display:block;width:100%;margin:0 0 6px;padding:0;border:0;border-radius:10px;overflow:hidden;background:var(--bg2);cursor:pointer;break-inside:avoid;position:relative;aspect-ratio:1;transition:transform .12s var(--ease),box-shadow .15s}
+.gpgrid{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;display:flex;align-items:flex-start;gap:6px;padding-right:2px;scrollbar-width:thin}
+.gpcol{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.gpi{display:block;flex:none;width:100%;margin:0;padding:0;border:0;border-radius:10px;overflow:hidden;background:var(--bg2);cursor:pointer;break-inside:avoid;position:relative;aspect-ratio:1;transition:transform .12s var(--ease),box-shadow .15s}
 .gpi:not(.ok)::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.06) 50%,transparent 70%);background-size:200% 100%;animation:shim 1.2s linear infinite}
 .gpi img{display:block;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .2s}
 .gpi.ok img{opacity:1}
 .gpi:hover{box-shadow:0 0 0 2px var(--accent)}
 .gpi:active{transform:scale(.96)}
-.gpe{column-span:all;text-align:center;color:var(--muted);font-size:13px;padding:30px 10px}
+.gpe{flex:1;text-align:center;color:var(--muted);font-size:13px;padding:30px 10px}
 .gpf{text-align:right;font-size:10.5px;color:var(--faint);letter-spacing:.02em}
 .gpf b{color:var(--muted)}
 .gifpick.busy .gpf::before{content:"carregando… ";color:var(--muted)}
