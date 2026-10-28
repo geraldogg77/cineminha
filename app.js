@@ -99,7 +99,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 40;   // igual ao ?v= do app.js no index.html
+const APP_VER = 41;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -1043,11 +1043,12 @@ function addMsg(m) {
     if (m.re && typeof m.re === 'object') {
       const q = document.createElement('button'); q.type = 'button'; q.className = 'rq';
       q.innerHTML = '<svg class="i"><use href="#i-reply"/></svg><b></b><span></span>';
-      q.querySelector('b').textContent = String(m.re.name || ''); q.querySelector('span').textContent = String(m.re.text || (m.re.img ? 'Imagem' : ''));
+      q.querySelector('b').textContent = String(m.re.name || ''); q.querySelector('span').textContent = String(m.re.text || (m.re.img ? 'Imagem ou GIF' : ''));
       q.onclick = e => { e.stopPropagation(); jumpTo(m.re.id); };
       d.lastElementChild.insertBefore(q, d.lastElementChild.querySelector('.mh').nextSibling);
     }
     if (m.img && okH(m.img)) chatImg(d.lastElementChild, m.img, m.iw, m.ih);
+    const gf = gifOk(m.gif); if (gf) chatGif(d.lastElementChild, gf);
     if (m.id) {
       d.dataset.mid = m.id;
       const rx = document.createElement('div'); rx.className = 'rx'; d.lastElementChild.append(rx);
@@ -1496,7 +1497,7 @@ function post(m) {
   if (!m.re) delete m.re;
   m.t = 'msg'; m.id = 'm' + (++msgSeq).toString(36) + Math.random().toString(36).slice(2, 5);
   REACT.set(m.id, {}); if (REACT.size > 300) REACT.delete(REACT.keys().next().value);
-  MSGS.set(m.id, {name: m.name, text: (m.text || '').slice(0, 90), img: !!m.img}); if (MSGS.size > 300) MSGS.delete(MSGS.keys().next().value);
+  MSGS.set(m.id, {name: m.name, text: (m.text || '').slice(0, 90), img: !!(m.img || m.gif)}); if (MSGS.size > 300) MSGS.delete(MSGS.keys().next().value);
   addMsg(m); bcast(m);
 }
 function sys(text) { const m = {t: 'sys', text}; addMsg(m); bcast(m); }
@@ -1533,7 +1534,11 @@ function onRoom(from, d) {
   else if (d.t === 'avc' && g && (g.avh === okH(d.h) || (g.up && g.up.h === okH(d.h)))) avRecv(d);
   else if (d.t === 'voice') { if (g) g.mic = !!d.on; users(); }
   else if (d.t === 'cam') { if (g) g.cam = !!d.on; users(); }
-  else if (d.t === 'msg') { if (typeof d.text !== 'string') return; const text = strip(d.text.slice(0, 2000)).replace(/\n{3,}/g, '\n\n').trim().slice(0, 500); if (text) post({name, text, ts: Date.now(), host: !g, uid: from, re: reOf(d.re)}); }
+  else if (d.t === 'msg') {
+    if (typeof d.text !== 'string') return; const text = strip(d.text.slice(0, 2000)).replace(/\n{3,}/g, '\n\n').trim().slice(0, 500);
+    const gif = gifOk(d.gif);
+    if (text || gif) { const m = {name, text, ts: Date.now(), host: !g, uid: from, re: reOf(d.re)}; if (gif) m.gif = gif; post(m); }
+  }
   else if (d.t === 'typing') { const m = {t: 'typing', id: from, name}; guests.forEach((x, id) => { if (id !== from && x.conn.open) x.conn.send(m); }); if (from !== myId) onMsg(m); }
   else if (d.t === 'imgup') {
     const h = okH(d.h), size = +d.size; if (!h || !(size > 0 && size <= IMG_MAX)) return;
@@ -2342,3 +2347,90 @@ function closeLight() { light.classList.remove('in'); setTimeout(() => { light.h
 light.onclick = closeLight;
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !light.hidden) { e.stopPropagation(); closeLight(); } }, true);
 setInterval(() => { $$('.cimg[data-h]:not(.ok)').forEach(f => { const h = f.dataset.h; if (!avUrl[h] && !avWant.has(h) && roomReady) { avWant.set(h, Date.now()); toRoom({t: 'avget', h}); } }); }, 6000);
+
+
+/* ======================================================================
+   Biblioteca de GIFs e figurinhas (KLIPY)
+   As imagens vêm direto da KLIPY para cada pessoa (as regras deles não permitem guardar
+   ou repassar as imagens). A mensagem leva só o endereço, e o anfitrião só aceita endereços da KLIPY.
+   ====================================================================== */
+const KLIPY_KEY = '';
+function gifOk(g) {
+  if (!g || typeof g !== 'object' || typeof g.u !== 'string' || g.u.length > 600) return null;
+  let u; try { u = new URL(g.u); } catch (e) { return null; }
+  if (u.protocol !== 'https:' || !(u.hostname === 'klipy.com' || u.hostname.endsWith('.klipy.com'))) return null;
+  return {u: u.href, w: dim(g.w), h: dim(g.h), k: g.k === 'stickers' ? 'stickers' : 'gifs'};
+}
+function chatGif(box, g) {
+  const fig = document.createElement('button'); fig.type = 'button'; fig.className = 'cimg gif' + (g.k === 'stickers' ? ' stk' : '');
+  fig.setAttribute('aria-label', 'Abrir GIF'); if (g.w && g.h) fig.style.aspectRatio = g.w + ' / ' + g.h;
+  const img = document.createElement('img'); img.alt = 'GIF'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = g.u;
+  img.onload = () => { fig.classList.add('ok'); const m = $('#msgs'); if (m.scrollHeight - m.scrollTop - m.clientHeight < 400) m.scrollTop = m.scrollHeight; };
+  img.onerror = () => { fig.classList.add('ok', 'err'); fig.textContent = 'GIF indisponível'; };
+  fig.append(img); fig.onclick = e => { e.stopPropagation(); openLight(g.u); };
+  box.append(fig);
+}
+const GP = {tab: 'gifs', q: '', page: 1, more: true, busy: false, seq: 0, cache: new Map()};
+let gpCid = ''; try { gpCid = localStorage.getItem('tl-kc') || ''; if (!gpCid) { gpCid = 'c' + Math.random().toString(36).slice(2, 14); localStorage.setItem('tl-kc', gpCid); } } catch (e) { gpCid = 'c' + Math.random().toString(36).slice(2, 14); }
+const gpBox = $('#gifPick'), gpGrid = $('#gpGrid'), gpIn = $('#gpQ');
+function pickFmt(file, sizes) {
+  if (!file || typeof file !== 'object') return null;
+  for (const sz of sizes) { const f = file[sz]; if (!f) continue; for (const k of ['webp', 'gif']) { const x = f[k]; if (x && typeof x.url === 'string') return {u: x.url, w: +x.width || 0, h: +x.height || 0}; } }
+  return null;
+}
+async function gpLoad(reset) {
+  if (!KLIPY_KEY) return;
+  if (reset) { GP.page = 1; GP.more = true; gpGrid.textContent = ''; gpGrid.scrollTop = 0; }
+  if (GP.busy || !GP.more) return;
+  GP.busy = true; const seq = ++GP.seq; gpBox.classList.add('busy');
+  const key = GP.tab + '|' + GP.q + '|' + GP.page;
+  try {
+    let j = GP.cache.get(key);
+    if (!j) {
+      const url = 'https://api.klipy.com/api/v1/' + encodeURIComponent(KLIPY_KEY) + '/' + GP.tab + '/' + (GP.q ? 'search' : 'trending')
+        + '?per_page=24&page=' + GP.page + '&locale=pt_BR&rating=pg-13&customer_id=' + encodeURIComponent(gpCid) + (GP.q ? '&q=' + encodeURIComponent(GP.q) : '');
+      const r = await fetch(url, {referrerPolicy: 'no-referrer', credentials: 'omit'});
+      if (!r.ok) throw new Error(r.status);
+      j = await r.json(); GP.cache.set(key, j); if (GP.cache.size > 60) GP.cache.delete(GP.cache.keys().next().value);
+    }
+    if (seq !== GP.seq) return;
+    const d = j && j.data, list = Array.isArray(d && d.data) ? d.data : Array.isArray(d) ? d : [];
+    GP.more = !!(d && d.has_next) && list.length > 0; GP.page++;
+    list.forEach(it => {
+      if (!it || it.type === 'ad') return;
+      const pv = pickFmt(it.file, ['sm', 'xs', 'md', 'hd']), full = pickFmt(it.file, ['md', 'hd', 'sm']);
+      if (!pv || !full || !gifOk(full)) return;
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'gpi';
+      b.setAttribute('aria-label', (GP.tab === 'stickers' ? 'Enviar figurinha ' : 'Enviar GIF ') + String(it.title || '').slice(0, 60));
+      if (pv.w && pv.h) b.style.aspectRatio = pv.w + ' / ' + pv.h;
+      const img = document.createElement('img'); img.loading = 'lazy'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.alt = ''; img.src = pv.u;
+      img.onload = () => b.classList.add('ok');
+      b.append(img); b.onclick = () => sendGif({...full, k: GP.tab}); gpGrid.append(b);
+    });
+    if (!gpGrid.children.length) gpGrid.innerHTML = '<p class="gpe">Nada encontrado. Tente outra palavra.</p>';
+  } catch (e) {
+    if (!gpGrid.children.length) gpGrid.innerHTML = '<p class="gpe">Não foi possível carregar os GIFs agora. Tente de novo em instantes.</p>';
+  } finally { if (seq === GP.seq) { GP.busy = false; gpBox.classList.remove('busy'); } }
+}
+function sendGif(g) {
+  const ok = gifOk(g); if (!ok) return;
+  const m = {t: 'msg', text: '', gif: {u: ok.u, w: ok.w, h: ok.h, k: g.k}}; if (replyTo) m.re = replyTo.id;
+  if (!toRoom(m)) return toast('Sem conexão com a sala agora.', 'err');
+  cancelReply(); closeGif();
+}
+function openGif() {
+  if (!KLIPY_KEY) return toast('A biblioteca de GIFs ainda está sendo configurada. Por enquanto, envie pelo botão de imagem.', 'info');
+  gpBox.hidden = false; requestAnimationFrame(() => gpBox.classList.add('in'));
+  $('#gifB').setAttribute('aria-expanded', 'true');
+  if (!gpGrid.children.length) gpLoad(true);
+  if (!matchMedia('(hover:none)').matches) setTimeout(() => gpIn.focus(), 60);
+}
+function closeGif() { gpBox.classList.remove('in'); $('#gifB').setAttribute('aria-expanded', 'false'); setTimeout(() => { if (!gpBox.classList.contains('in')) gpBox.hidden = true; }, 180); }
+$('#gifB').onclick = () => gpBox.hidden ? openGif() : closeGif();
+$('#gpX').onclick = closeGif;
+let gpT = 0;
+gpIn.addEventListener('input', () => { clearTimeout(gpT); gpT = setTimeout(() => { const q = gpIn.value.trim().slice(0, 50); if (q === GP.q) return; GP.q = q; gpLoad(true); }, 400); });
+$$('.gptab').forEach(t => t.onclick = () => { if (GP.tab === t.dataset.k) return; GP.tab = t.dataset.k; $$('.gptab').forEach(x => { x.classList.toggle('on', x === t); x.setAttribute('aria-selected', x === t); }); gpIn.placeholder = GP.tab === 'stickers' ? 'Buscar figurinhas' : 'Buscar GIFs'; gpLoad(true); });
+gpGrid.addEventListener('scroll', () => { if (gpGrid.scrollTop + gpGrid.clientHeight > gpGrid.scrollHeight - 300) gpLoad(false); });
+document.addEventListener('pointerdown', e => { if (!gpBox.hidden && !gpBox.contains(e.target) && !e.target.closest('#gifB')) closeGif(); }, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !gpBox.hidden) { e.stopPropagation(); closeGif(); } }, true);

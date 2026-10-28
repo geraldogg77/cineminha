@@ -873,3 +873,40 @@ button.achip:hover{background:var(--bg3)}
 .chat.drop{box-shadow:inset 0 0 0 2px var(--accent)}
 @media (max-width:900px){.imgB{left:49px!important}.replybar{margin:0 10px -4px}}
 .rq{width:100%;overflow:hidden}
+
+/* ---------- GIFs e figurinhas ---------- */
+.chat{position:relative}
+.gifB{left:85px!important;width:38px!important}
+.gifB b{font:700 11px/1 var(--display);letter-spacing:.04em;border:1.6px solid currentColor;border-radius:5px;padding:3px 4px}
+.gifB[aria-expanded=true]{color:var(--accent)}
+.in input{padding-left:126px!important}
+@media (max-width:900px){.gifB{left:81px!important}}
+.gifpick{position:absolute;left:12px;right:12px;bottom:72px;z-index:20;height:min(440px,62vh);display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:18px;background:var(--bg3);
+  box-shadow:var(--shadow),0 0 0 1px var(--line2) inset;opacity:0;transform:translateY(8px) scale(.98);transform-origin:bottom left;transition:opacity .16s var(--ease),transform .22s var(--spring)}
+.gifpick.in{opacity:1;transform:none}
+.gifpick[hidden]{display:none}
+.gph{display:flex;align-items:center;gap:6px}
+.gph .ibtn{width:30px;height:30px;color:var(--muted)}
+.gptabs{display:flex;gap:2px;padding:3px;border-radius:10px;background:var(--bg2)}
+.gptab{height:28px;padding:0 12px;border:0;border-radius:8px;background:none;color:var(--muted);font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background-color .15s,color .15s}
+.gptab.on{background:var(--bg4);color:var(--head)}
+.gps{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:11px;background:var(--bg2);box-shadow:0 0 0 1px var(--line) inset}
+.gps:focus-within{box-shadow:0 0 0 1px var(--accent-line) inset,0 0 0 3px var(--accent-soft)}
+.gps .i{width:16px;height:16px;color:var(--muted);flex:none}
+.gps input{flex:1;min-width:0;height:100%;border:0;background:none;color:var(--text);font:inherit;font-size:14px;outline:0}
+.gps input::-webkit-search-cancel-button{filter:invert(.6)}
+.gpgrid{flex:1;min-height:0;overflow-y:auto;columns:2 120px;column-gap:6px;padding-right:2px;scrollbar-width:thin}
+.gpi{display:block;width:100%;margin:0 0 6px;padding:0;border:0;border-radius:10px;overflow:hidden;background:var(--bg2);cursor:pointer;break-inside:avoid;position:relative;aspect-ratio:1;transition:transform .12s var(--ease),box-shadow .15s}
+.gpi:not(.ok)::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.06) 50%,transparent 70%);background-size:200% 100%;animation:shim 1.2s linear infinite}
+.gpi img{display:block;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .2s}
+.gpi.ok img{opacity:1}
+.gpi:hover{box-shadow:0 0 0 2px var(--accent)}
+.gpi:active{transform:scale(.96)}
+.gpe{column-span:all;text-align:center;color:var(--muted);font-size:13px;padding:30px 10px}
+.gpf{text-align:right;font-size:10.5px;color:var(--faint);letter-spacing:.02em}
+.gpf b{color:var(--muted)}
+.gifpick.busy .gpf::before{content:"carregando… ";color:var(--muted)}
+.cimg.gif{width:min(100%,260px)}
+.cimg.stk{background:none;width:min(100%,160px)}
+.cimg.err{display:grid;place-items:center;font-size:12px;color:var(--muted);aspect-ratio:auto;height:60px}
+.gps input{padding:0!important;margin:0;box-shadow:none!important;background:none!important;border:0!important;border-radius:0!important;height:100%!important;width:auto;text-align:left;-webkit-appearance:none;appearance:none}
