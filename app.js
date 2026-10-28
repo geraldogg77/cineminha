@@ -63,13 +63,14 @@ const PRE = {
 };
 const S = {theme: 'dark', accent: '#5B7CFA', calm: false, res: 1080, fps: 60, br: 12, prio: 'motion', codec: 'auto', abr: 320, max: 2,
   mxScreen: true, vScreen: 100, mxMic: false, vMic: 100, micDev: '', mxExtra: false, vExtra: 100, extDev: '',
-  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false, outDev: '', vVoice: 100, src: 'screen', camDev: '', pvol: {}, sfx: true};
+  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false, outDev: '', vVoice: 100, src: 'screen', camDev: '', pvol: {}, sfx: true, ns: 'ia'};
 try {
   const saved = JSON.parse(localStorage.getItem('tl-set') || '{}');
   if (saved && typeof saved === 'object') Object.keys(S).forEach(k => { if (k in saved && typeof saved[k] === typeof S[k] && (typeof S[k] !== 'object' || (saved[k] && !Array.isArray(saved[k])))) S[k] = saved[k]; });
 } catch (e) {}
 if (!['dark', 'classic', 'oled', 'light'].includes(S.theme)) S.theme = 'dark';
 if (!['screen', 'cam'].includes(S.src)) S.src = 'screen';
+if (!['ia', 'leve', 'off'].includes(S.ns)) S.ns = 'ia';
 S.max = Math.min(10, Math.max(1, +S.max || 2));
 if (!/^#[0-9a-f]{6}$/i.test(S.accent)) S.accent = '#5B7CFA';
 /* versão 8 tinha âmbar como padrão: quem ficou com ele sem escolher volta ao azul uma única vez */
@@ -98,7 +99,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 37;   // igual ao ?v= do app.js no index.html
+const APP_VER = 39;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -166,7 +167,7 @@ function paintMe() {
   });
 }
 function avRefresh() {
-  paintMe();
+  paintMe(); fillChatImgs();
   $$('.msg .av[data-n]').forEach(a => avatar(a, a.dataset.n));
   if (roomReady) { renderMembers(); render(); }
 }
@@ -282,6 +283,7 @@ async function avRecv(d) {
   /* só aceita se o conteúdo for o mesmo da foto pedida e for uma imagem */
   if (buf.byteLength !== size || !type || await sha(buf) !== h) { avWant.delete(h); return; }
   avRegister(h, buf, type); avSave(h, buf, type); avWant.delete(h);
+  if (isHost) guests.forEach(g => { if (g.up && g.up.h === h) postImg(g.up); });
   if (isHost) { const w = avWait[h]; delete avWait[h]; if (w) w.forEach(id => { const g = guests.get(id); if (g) avSend(g.conn, h); }); }
   avRefresh();
 }
@@ -588,6 +590,7 @@ function attach(key, ms) {
 function detach(key, stopTracks) {
   const n = MX.nodes[key]; if (!n) return;
   try { n.src.disconnect(); n.g.disconnect(); } catch (e) {}
+  (n.fx || []).forEach(x => { try { x.disconnect(); if (x.destroy) x.destroy(); } catch (e) {} });
   if (stopTracks) n.ms.getTracks().forEach(t => t.stop());
   delete MX.nodes[key];
 }
@@ -671,7 +674,7 @@ function mixChanged(k) {
   else if (k === 'vExtra') gain('extra');
   else if (k === 'vApps') gain('apps');
   else if (k === 'mxApps') { gain('apps'); helperStream(); }
-  else if (k === 'mxMic' || k === 'micDev') { voiceMic(); micWarn(); }
+  else if (k === 'mxMic' || k === 'micDev' || k === 'ns') { voiceMic(); micWarn(); }
   else if (k === 'outDev') applySinks();
   else if (k === 'camDev') { if (myCam) camStart(); }
   else if (k === 'vVoice') applyVoiceVol();
@@ -700,14 +703,19 @@ async function voiceMic() {
   if (!canSpeak()) { S.mxMic = false; save(); sync(); return; }
   if (!me || !navigator.mediaDevices) return;
   try {
-    const ms = await navigator.mediaDevices.getUserMedia({audio: {deviceId: S.micDev ? {exact: S.micDev} : undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1}});
+    /* com a redução por IA, a do navegador fica desligada (as duas juntas deixam a voz metálica);
+       o isolamento de voz do sistema, quando existe (Chrome/Edge recentes), entra junto */
+    const ia = S.ns !== 'off';
+    const ms = await navigator.mediaDevices.getUserMedia({audio: {deviceId: S.micDev ? {exact: S.micDev} : undefined, echoCancellation: true, noiseSuppression: S.ns !== 'ia', autoGainControl: true, channelCount: 1, sampleRate: 48000, voiceIsolation: ia}});
     if (!S.mxMic) { ms.getTracks().forEach(t => t.stop()); return; }
     const ctx = mixCtx();
     if (!VO.dest) VO.dest = ctx.createMediaStreamDestination();
     detach('mic', true);
     const src = ctx.createMediaStreamSource(ms), g = ctx.createGain(), an = ctx.createAnalyser(); an.fftSize = 512;
-    src.connect(g); g.connect(an); g.connect(VO.dest);
-    MX.nodes.mic = {ms, src, g, an, buf: new Uint8Array(an.fftSize)}; gain('mic');
+    const fx = await voiceChain(ctx);
+    let last = src; fx.forEach(n => { last.connect(n); last = n; }); last.connect(g);
+    g.connect(an); g.connect(VO.dest);
+    MX.nodes.mic = {ms, src, g, an, fx, buf: new Uint8Array(an.fftSize)}; gain('mic');
     if (!devOk) refreshDevices();
     if (!VO.on) { VO.on = true; audioSession(); toRoom({t: 'voice', on: true}); }
     syncVoice();
@@ -1028,22 +1036,35 @@ function addMsg(m) {
     d.querySelector('.tag').hidden = !m.host;
     const tm = d.querySelector('time'), dt = new Date(m.ts);
     tm.textContent = dt.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}); tm.dateTime = dt.toISOString();
-    d.querySelector('p').textContent = m.text;
+    const body = d.querySelector('p');
+    richText(body, m.text || ''); if (!m.text) body.remove();
     /* mensagem só de emojis aparece grande, como no Discord */
-    if (/^(\p{Extended_Pictographic}|\p{Emoji_Component}|\u200d|\ufe0f|\s){1,12}$/u.test(m.text) && /\p{Extended_Pictographic}/u.test(m.text)) d.querySelector('p').classList.add('jumbo');
+    if (m.text && /^(\p{Extended_Pictographic}|\p{Emoji_Component}|\u200d|\ufe0f|\s){1,12}$/u.test(m.text) && /\p{Extended_Pictographic}/u.test(m.text)) body.classList.add('jumbo');
+    if (m.re && typeof m.re === 'object') {
+      const q = document.createElement('button'); q.type = 'button'; q.className = 'rq';
+      q.innerHTML = '<svg class="i"><use href="#i-reply"/></svg><b></b><span></span>';
+      q.querySelector('b').textContent = String(m.re.name || ''); q.querySelector('span').textContent = String(m.re.text || (m.re.img ? 'Imagem' : ''));
+      q.onclick = e => { e.stopPropagation(); jumpTo(m.re.id); };
+      d.lastElementChild.insertBefore(q, d.lastElementChild.querySelector('.mh').nextSibling);
+    }
+    if (m.img && okH(m.img)) chatImg(d.lastElementChild, m.img, m.iw, m.ih);
     if (m.id) {
       d.dataset.mid = m.id;
       const rx = document.createElement('div'); rx.className = 'rx'; d.lastElementChild.append(rx);
       const add = document.createElement('button'); add.type = 'button'; add.className = 'rxadd'; add.setAttribute('aria-label', 'Reagir à mensagem');
       add.innerHTML = '<svg class="i"><use href="#i-smile"/></svg><svg class="i pl"><use href="#i-plus"/></svg>';
       add.onclick = e => { e.stopPropagation(); openEmo(add, em => toRoom({t: 'react', mid: m.id, e: em})); };
-      d.append(add);
+      const rep = document.createElement('button'); rep.type = 'button'; rep.className = 'rxadd rpl'; rep.setAttribute('aria-label', 'Responder'); rep.dataset.tip = 'Responder';
+      rep.innerHTML = '<svg class="i"><use href="#i-reply"/></svg>';
+      rep.onclick = e => { e.stopPropagation(); startReply(m); };
+      const tools = document.createElement('div'); tools.className = 'mtools'; tools.append(rep, add); d.append(tools);
       /* no toque: tocar na mensagem mostra o botão de reagir */
-      d.addEventListener('click', e => { if (matchMedia('(hover:none)').matches && !e.target.closest('.rx,.rxadd')) { $$('.msg.sel').forEach(x => x !== d && x.classList.remove('sel')); d.classList.toggle('sel'); } });
+      d.addEventListener('click', e => { if (matchMedia('(hover:none)').matches && !e.target.closest('.rx,.rxadd,a,.cimg,.rq')) { $$('.msg.sel').forEach(x => x !== d && x.classList.remove('sel')); d.classList.toggle('sel'); } });
     }
     lastAuthor = {name: m.name, ts: m.ts};
     $('#chatEmpty').hidden = true;
     const hiddenChat = document.body.classList.contains('nochat') || document.body.classList.contains('theater');
+    if (m.uid) typingOff(m.uid);
     if (m.name !== me && hiddenChat) { unread++; paintUnread(); }
     if (m.name !== me && (hiddenChat || document.hidden)) sfx('msg');
   }
@@ -1052,12 +1073,18 @@ function addMsg(m) {
   while (box.querySelectorAll('.msg,.sys').length > 200) box.querySelector('.msg,.sys').remove();
   if (stick || m.name === me) box.scrollTop = box.scrollHeight;
 }
-$('#mi').addEventListener('input', () => { $('#sendB').disabled = !$('#mi').value.trim(); });
+let typingSent = 0;
+$('#mi').addEventListener('input', () => {
+  $('#sendB').disabled = !$('#mi').value.trim();
+  if ($('#mi').value.trim() && Date.now() - typingSent > 2500 && roomReady) { typingSent = Date.now(); toRoom({t: 'typing'}); }
+});
 $('#f').onsubmit = e => {
   e.preventDefault();
   const text = $('#mi').value.trim(); if (!text) return;
-  $('#mi').value = ''; $('#sendB').disabled = true;
-  if (!toRoom({t: 'msg', text})) addMsg({t: 'sys', text: 'Sem conexão com o anfitrião. Sua mensagem não foi enviada.'});
+  $('#mi').value = ''; $('#sendB').disabled = true; typingSent = 0;
+  const m = {t: 'msg', text}; if (replyTo) m.re = replyTo.id;
+  if (!toRoom(m)) addMsg({t: 'sys', text: 'Sem conexão com o anfitrião. Sua mensagem não foi enviada.'});
+  cancelReply();
 };
 
 /* ---------- Membros ---------- */
@@ -1432,6 +1459,7 @@ function onMsg(d) {
   else if (d.t === 'msg' || d.t === 'sys') addMsg(d);
   else if (d.t === 'reacts') paintReacts(d.mid, d.r || {});
   else if (d.t === 'fx') floatFx(d.e, d.name, d.id === myId);
+  else if (d.t === 'typing' && typeof d.id === 'string' && d.id !== myId) typingOn(d.id, String(d.name || '').slice(0, 20));
   else if (d.t === 'stageinv') stageInvited(d.name);
   else if (d.t === 'users') {
     const firstReady = !roomReady;
@@ -1455,10 +1483,21 @@ function onMsg(d) {
 const bcast = m => guests.forEach(g => g.conn.open && g.conn.send(m));
 const deliver = (id, m) => { if (id === myId) return onMsg(m); const g = guests.get(id); if (g && g.conn.open) g.conn.send(m); };
 let msgSeq = 0;
+const MSGS = new Map(), IMG_MAX = 8 * 1024 * 1024;
+const dim = v => { v = Math.round(+v); return v > 0 && v < 20000 ? v : 0; };
+/* a citação é montada pelo anfitrião a partir da mensagem original: ninguém forja o que o outro disse */
+function reOf(id) { if (typeof id !== 'string' || id.length > 40) return null; const o = MSGS.get(id); return o ? {id, name: o.name, text: o.text, img: o.img} : null; }
+function postImg(up) {
+  if (!up || up.done) return; up.done = true;
+  const g = guests.get(up.from); if (g && g.up === up) g.up = null;
+  post({name: up.name, text: up.text, img: up.h, iw: up.iw, ih: up.ih, ts: Date.now(), host: up.from === myId, uid: up.from, re: up.re});
+}
 const REACT = new Map();
 function post(m) {
+  if (!m.re) delete m.re;
   m.t = 'msg'; m.id = 'm' + (++msgSeq).toString(36) + Math.random().toString(36).slice(2, 5);
   REACT.set(m.id, {}); if (REACT.size > 300) REACT.delete(REACT.keys().next().value);
+  MSGS.set(m.id, {name: m.name, text: (m.text || '').slice(0, 90), img: !!m.img}); if (MSGS.size > 300) MSGS.delete(MSGS.keys().next().value);
   addMsg(m); bcast(m);
 }
 function sys(text) { const m = {t: 'sys', text}; addMsg(m); bcast(m); }
@@ -1492,10 +1531,17 @@ function onRoom(from, d) {
     const owner = [...guests.entries()].find(([, x]) => x.avh === h);
     if (owner && !avAsked.has(h)) { avAsked.add(h); deliver(owner[0], {t: 'avget', h}); setTimeout(() => avAsked.delete(h), 30000); }
   }
-  else if (d.t === 'avc' && g && g.avh === okH(d.h)) avRecv(d);
+  else if (d.t === 'avc' && g && (g.avh === okH(d.h) || (g.up && g.up.h === okH(d.h)))) avRecv(d);
   else if (d.t === 'voice') { if (g) g.mic = !!d.on; users(); }
   else if (d.t === 'cam') { if (g) g.cam = !!d.on; users(); }
-  else if (d.t === 'msg') { if (typeof d.text !== 'string') return; const text = strip(d.text.slice(0, 2000)).replace(/\n{3,}/g, '\n\n').trim().slice(0, 500); if (text) post({name, text, ts: Date.now(), host: !g, uid: from}); }
+  else if (d.t === 'msg') { if (typeof d.text !== 'string') return; const text = strip(d.text.slice(0, 2000)).replace(/\n{3,}/g, '\n\n').trim().slice(0, 500); if (text) post({name, text, ts: Date.now(), host: !g, uid: from, re: reOf(d.re)}); }
+  else if (d.t === 'typing') { const m = {t: 'typing', id: from, name}; guests.forEach((x, id) => { if (id !== from && x.conn.open) x.conn.send(m); }); if (from !== myId) onMsg(m); }
+  else if (d.t === 'imgup') {
+    const h = okH(d.h), size = +d.size; if (!h || !(size > 0 && size <= IMG_MAX)) return;
+    const up = {h, text: typeof d.text === 'string' ? strip(d.text.slice(0, 600)).trim().slice(0, 500) : '', re: reOf(d.re), iw: dim(d.iw), ih: dim(d.ih), name, from};
+    if (!g) return postImg(up);
+    g.up = up; if (avUrl[h]) postImg(up);
+  }
   else if (d.t === 'react' && typeof d.mid === 'string' && EMO.includes(d.e)) {
     const r = REACT.get(d.mid); if (!r) return;
     const set = r[d.e] || (r[d.e] = new Set());
@@ -1963,9 +2009,9 @@ tileFs = R => goFs(R.el, mainVideo(R));
    Segurança da sala (no anfitrião)
    ====================================================================== */
 var banned = new Set(), roomLocked = false;
-const KINDS = new Set(['hb', 'hello', 'profile', 'avget', 'avc', 'voice', 'cam', 'msg', 'react', 'fx', 'hand', 'spk', 'spkno', 'live', 'watch', 'unwatch', 'pause']);
+const KINDS = new Set(['typing', 'imgup', 'hb', 'hello', 'profile', 'avget', 'avc', 'voice', 'cam', 'msg', 'react', 'fx', 'hand', 'spk', 'spkno', 'live', 'watch', 'unwatch', 'pause']);
 /* limite por tipo: [quantas, em quantos ms] */
-const RATE = {msg: [6, 8000], react: [24, 10000], fx: [10, 5000], hand: [6, 30000], hello: [4, 30000], profile: [6, 30000], avget: [60, 10000], avc: [320, 15000],
+const RATE = {typing: [4, 8000], imgup: [4, 30000], msg: [6, 8000], react: [24, 10000], fx: [10, 5000], hand: [6, 30000], hello: [4, 30000], profile: [6, 30000], avget: [60, 10000], avc: [320, 15000],
   live: [10, 10000], voice: [10, 10000], cam: [10, 10000], watch: [40, 10000], unwatch: [40, 10000], pause: [10, 10000], spk: [6, 10000], spkno: [6, 10000]};
 function guard(g, id, d) {
   if (!d || typeof d !== 'object' || Array.isArray(d) || typeof d.t !== 'string' || !KINDS.has(d.t)) return strike(g, id, 'formato');
@@ -2152,3 +2198,148 @@ setInterval(() => {
     if (hostAt && hv >= 37 && now - hostAt > 8000) { try { hostConn.close(); } catch (e) {} }
   }
 }, 2500);
+
+
+/* ======================================================================
+   Microfone focado na voz
+   Corta o grave do ambiente (ar-condicionado, ventilador, batidas na mesa), tira o ruído com
+   uma rede neural rodando no próprio navegador (GTCRN; RNNoise no modo leve) e fecha o
+   microfone quando você não está falando. Nada sai do seu computador para isso.
+   ====================================================================== */
+const NSV = {mod: null, bins: {}, mods: new WeakMap()};
+async function nsModule(ctx, name) {
+  let set = NSV.mods.get(ctx); if (!set) NSV.mods.set(ctx, set = {});
+  return set[name] || (set[name] = ctx.audioWorklet.addModule('vendor/ns/' + name + '.worklet.js?v=1'));
+}
+async function voiceChain(ctx) {
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 85; hp.Q.value = .7;
+  const out = [hp];
+  if (S.ns === 'off' || !window.AudioWorkletNode || ctx.sampleRate !== 48000) return out;
+  try {
+    NSV.mod = NSV.mod || import('./vendor/ns/index.js?v=1');
+    const m = await NSV.mod;
+    const make = async kind => {
+      await nsModule(ctx, kind);
+      NSV.bins[kind] = NSV.bins[kind] || (kind === 'gtcrn' ? m.loadGtcrn({url: 'vendor/ns/gtcrn.wasm'}) : m.loadRnnoise({url: 'vendor/ns/rnnoise.wasm', simdUrl: 'vendor/ns/rnnoise_simd.wasm'}));
+      const bin = await NSV.bins[kind];
+      return kind === 'gtcrn' ? new m.GtcrnWorkletNode(ctx, {maxChannels: 1, wasmBinary: bin}) : new m.RnnoiseWorkletNode(ctx, {maxChannels: 1, wasmBinary: bin});
+    };
+    let ns;
+    try { ns = await make(S.ns === 'ia' ? 'gtcrn' : 'rnnoise'); }
+    catch (e) { console.warn('Redução de ruído: usando o modo leve', e); ns = await make('rnnoise'); }
+    out.push(ns);
+    /* portão: abaixo do volume de fala o microfone fica mudo (sem chiado entre as frases) */
+    await nsModule(ctx, 'gate');
+    out.push(new m.NoiseGateWorkletNode(ctx, {openThreshold: -50, closeThreshold: -58, holdMs: 280, maxChannels: 1}));
+    /* devolve o volume que a limpeza tira junto com o ruído */
+    const mk = ctx.createGain(); mk.gain.value = 1.8; out.push(mk);
+  } catch (e) {
+    console.warn('Redução de ruído indisponível neste navegador', e);
+    toast('A redução de ruído avançada não funcionou neste navegador. O microfone segue com a redução padrão.', 'info');
+  }
+  return out;
+}
+
+
+/* ======================================================================
+   Chat: links, resposta, "digitando…" e imagens
+   ====================================================================== */
+const URL_RE = /\bhttps?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]}]/gi;
+function richText(el, text) {
+  el.textContent = ''; let i = 0;
+  for (const mt of text.matchAll(URL_RE)) {
+    let u; try { u = new URL(mt[0]); } catch (e) { continue; }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') continue;
+    if (mt.index > i) el.append(text.slice(i, mt.index));
+    const a = document.createElement('a'); a.href = u.href; a.target = '_blank'; a.rel = 'noopener noreferrer nofollow ugc';
+    const shown = mt[0].replace(/^https?:\/\/(www\.)?/, ''); a.textContent = shown.length > 60 ? shown.slice(0, 57) + '…' : shown; a.title = u.href;
+    el.append(a); i = mt.index + mt[0].length;
+  }
+  if (i < text.length) el.append(text.slice(i));
+}
+function jumpTo(id) {
+  const t = document.querySelector('.msg[data-mid="' + CSS.escape(String(id)) + '"]');
+  if (!t) return toast('Essa mensagem já saiu do histórico.', 'info');
+  t.scrollIntoView({behavior: 'smooth', block: 'center'}); t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
+}
+/* resposta */
+let replyTo = null;
+function startReply(m) {
+  replyTo = {id: m.id, name: m.name};
+  const b = $('#replyBar'); b.hidden = false;
+  b.querySelector('.rbt b').textContent = m.name; b.querySelector('.rbt > span').textContent = m.text ? m.text.slice(0, 90) : 'Imagem';
+  $$('.msg.sel').forEach(x => x.classList.remove('sel'));
+  if (narrow() && document.body.classList.contains('nochat')) setChat(true);
+  $('#mi').focus();
+}
+function cancelReply() { replyTo = null; $('#replyBar').hidden = true; }
+$('#replyX').onclick = cancelReply;
+$('#mi').addEventListener('keydown', e => { if (e.key === 'Escape' && replyTo) { e.stopPropagation(); cancelReply(); } });
+/* digitando */
+const typing = new Map();
+function typingOn(id, name) { const t = typing.get(id); if (t) clearTimeout(t.to); typing.set(id, {name, to: setTimeout(() => typingOff(id), 4500)}); paintTyping(); }
+function typingOff(id) { const t = typing.get(id); if (!t) return; clearTimeout(t.to); typing.delete(id); paintTyping(); }
+function paintTyping() {
+  const n = [...typing.values()].map(t => t.name), el = $('#typing');
+  el.querySelector('span').textContent = !n.length ? '' : n.length === 1 ? n[0] + ' está digitando…' : n.length === 2 ? n[0] + ' e ' + n[1] + ' estão digitando…' : 'Várias pessoas estão digitando…';
+  el.classList.toggle('on', n.length > 0);
+}
+/* imagens: colar, arrastar ou escolher. Fotos são refeitas no navegador (some a localização e outros dados escondidos do arquivo) */
+async function prepImg(file) {
+  if (!file || !/^image\//.test(file.type)) throw 'Escolha um arquivo de imagem.';
+  if (file.size > 40 * 1024 * 1024) throw 'Imagem grande demais.';
+  const raw = await file.arrayBuffer(), kind = sniff(raw);
+  if (!kind) throw 'Formato de imagem não suportado. Use PNG, JPG, GIF ou WebP.';
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej('Não foi possível abrir essa imagem.'); i.src = url; });
+    if (kind === 'image/gif') { if (raw.byteLength > IMG_MAX) throw 'GIF grande demais (máximo de 8 MB).'; return {buf: raw, type: kind, iw: img.naturalWidth, ih: img.naturalHeight}; }
+    const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+    const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
+    let blob = await new Promise(r => c.toBlob(r, 'image/webp', .86));
+    if (!blob || blob.type !== 'image/webp') blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .86));
+    const buf = await blob.arrayBuffer(); if (buf.byteLength > IMG_MAX) throw 'Imagem grande demais.';
+    return {buf, type: sniff(buf), iw: w, ih: h};
+  } finally { URL.revokeObjectURL(url); }
+}
+async function sendImg(file) {
+  if (!roomReady) return toast('Aguarde a conexão com a sala.', 'info');
+  let p; try { p = await prepImg(file); } catch (m) { return toast(typeof m === 'string' ? m : 'Não foi possível enviar essa imagem.', 'err'); }
+  const h = await sha(p.buf); avRegister(h, p.buf, p.type); avSave(h, p.buf, p.type);
+  const text = $('#mi').value.trim(); $('#mi').value = ''; $('#sendB').disabled = true;
+  const m = {t: 'imgup', h, size: p.buf.byteLength, text, re: replyTo ? replyTo.id : null, iw: p.iw, ih: p.ih};
+  cancelReply();
+  if (!toRoom(m)) return toast('Sem conexão com a sala agora.', 'err');
+  if (!isHost) { toast('Enviando imagem…', 'info'); avSend(hostConn, h); }
+}
+$('#imgB').onclick = () => $('#imgFile').click();
+$('#imgFile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) sendImg(f); };
+$('#mi').addEventListener('paste', e => { const f = [...(e.clipboardData || {}).files || []].find(x => /^image\//.test(x.type)); if (f) { e.preventDefault(); sendImg(f); } });
+const chatEl = $('.chat');
+chatEl.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); chatEl.classList.add('drop'); } });
+chatEl.addEventListener('dragleave', e => { if (!chatEl.contains(e.relatedTarget)) chatEl.classList.remove('drop'); });
+chatEl.addEventListener('drop', e => { chatEl.classList.remove('drop'); const f = [...e.dataTransfer.files].find(x => /^image\//.test(x.type)); if (f) { e.preventDefault(); sendImg(f); } });
+function chatImg(box, h, iw, ih) {
+  const w = dim(iw), hh = dim(ih);
+  const fig = document.createElement('button'); fig.type = 'button'; fig.className = 'cimg'; fig.dataset.h = h; fig.setAttribute('aria-label', 'Abrir imagem');
+  if (w && hh) fig.style.aspectRatio = w + ' / ' + hh;
+  fig.onclick = e => { e.stopPropagation(); if (avUrl[h]) openLight(avUrl[h]); };
+  box.append(fig); fillImg(fig);
+  if (!avUrl[h] && !avWant.has(h)) { avWant.set(h, Date.now()); avCached(h).then(ok => { if (ok) { avWant.delete(h); fillChatImgs(); } else toRoom({t: 'avget', h}); }); }
+}
+function fillImg(fig) {
+  const u = avUrl[fig.dataset.h]; if (!u || fig.querySelector('img')) return;
+  const img = document.createElement('img'); img.alt = 'Imagem enviada no chat'; img.decoding = 'async'; img.src = u;
+  img.onload = () => { fig.classList.add('ok'); const m = $('#msgs'); if (m.scrollHeight - m.scrollTop - m.clientHeight < 400) m.scrollTop = m.scrollHeight; };
+  fig.append(img);
+}
+function fillChatImgs() { $$('.cimg[data-h]').forEach(fillImg); }
+/* visualizador */
+const light = document.createElement('div'); light.className = 'light'; light.hidden = true; light.setAttribute('role', 'dialog'); light.setAttribute('aria-label', 'Imagem');
+light.innerHTML = '<img alt=""><button type="button" class="ibtn" aria-label="Fechar"><svg class="i"><use href="#i-x"/></svg></button>';
+document.body.append(light);
+function openLight(u) { light.querySelector('img').src = u; light.hidden = false; requestAnimationFrame(() => light.classList.add('in')); }
+function closeLight() { light.classList.remove('in'); setTimeout(() => { light.hidden = true; light.querySelector('img').removeAttribute('src'); }, 180); }
+light.onclick = closeLight;
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !light.hidden) { e.stopPropagation(); closeLight(); } }, true);
+setInterval(() => { $$('.cimg[data-h]:not(.ok)').forEach(f => { const h = f.dataset.h; if (!avUrl[h] && !avWant.has(h) && roomReady) { avWant.set(h, Date.now()); toRoom({t: 'avget', h}); } }); }, 6000);
