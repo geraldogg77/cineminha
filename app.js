@@ -29,7 +29,7 @@ async function loadIce() {
     const d = await r.json();
     if (!r.ok || !Array.isArray(d.iceServers) || !d.iceServers.length) throw new Error(d.error || r.status);
     ICE.iceServers = d.iceServers; relayName = 'Cloudflare'; ttl = d.ttl || 43200;
-    if (peer && peer.options) peer.options.config = {iceServers: ICE.iceServers, iceTransportPolicy: S.hideIp ? 'relay' : 'all'};
+    if (peer && peer.options) peer.options.config = {iceServers: ICE.iceServers, iceTransportPolicy: 'relay'};
   } catch (e) {
     console.warn('TURN: usando o servidor público.', e);
   }
@@ -63,12 +63,11 @@ const PRE = {
 };
 const S = {theme: 'dark', accent: '#5B7CFA', calm: false, res: 1080, fps: 60, br: 12, prio: 'motion', codec: 'auto', abr: 320, max: 2,
   mxScreen: true, vScreen: 100, mxMic: false, vMic: 100, micDev: '', mxExtra: false, vExtra: 100, extDev: '',
-  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false, outDev: '', vVoice: 100, src: 'screen', camDev: '', hideIp: false};
+  mxApps: false, vApps: 100, appPrefs: {}, helperSeen: false, outDev: '', vVoice: 100, src: 'screen', camDev: ''};
 try {
   const saved = JSON.parse(localStorage.getItem('tl-set') || '{}');
   if (saved && typeof saved === 'object') Object.keys(S).forEach(k => { if (k in saved && typeof saved[k] === typeof S[k] && (typeof S[k] !== 'object' || (saved[k] && !Array.isArray(saved[k])))) S[k] = saved[k]; });
 } catch (e) {}
-S.hideIp = !!S.hideIp;
 if (!['dark', 'classic', 'oled', 'light'].includes(S.theme)) S.theme = 'dark';
 if (!['screen', 'cam'].includes(S.src)) S.src = 'screen';
 S.max = Math.min(10, Math.max(1, +S.max || 2));
@@ -99,7 +98,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 35;   // igual ao ?v= do app.js no index.html
+const APP_VER = 36;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -1516,7 +1515,8 @@ function onRoom(from, d) {
   else if (d.t === 'pause') { const m = {t: 'pause', id: from, name, v: !!d.v}; bcast(m); onMsg(m); }
 }
 function startPeer(id) {
-  const config = {iceServers: ICE.iceServers, iceTransportPolicy: S.hideIp ? 'relay' : 'all'};
+  /* o IP de ninguém aparece para os outros: todo áudio, vídeo e dado passa pelo servidor de repasse */
+  const config = {iceServers: ICE.iceServers, iceTransportPolicy: 'relay'};
   peer = id ? new Peer(id, {config}) : new Peer({config});
   peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
   peer.on('call', onCall);
@@ -1571,6 +1571,8 @@ function connect() {
   if (hostConn && hostConn.open) return;
   const c = peer.connect(target, {reliable: true}); hostConn = c;
   if (!c) return retry(3000);
+  /* se o servidor de repasse não responder, avisa em vez de ficar parado em "Conectando" */
+  setTimeout(() => { if (hostConn === c && !c.open && !roomReady && !full) setStatus('Demorando para conectar', 'A conexão protegida (que esconde o seu IP) está demorando. Confira sua internet; continuo tentando.'); }, 15000);
   c.on('open', () => { if (hostConn !== c) return; c.send({t: 'hello', name: me, ver: APP_VER, av: avData[myAvH] || '', avh: myAvH, live: !!stream, mic: VO.on, cam: !!myCam}); setStatus('Conectado', 'Carregando a sala…'); });
   c.on('data', d => { if (hostConn === c) onMsg(d); });
   c.on('close', () => {
@@ -1701,10 +1703,9 @@ setInterval(async () => {
     }
   });
   if (!st) return;
-  if (rel && !last.w && relayName !== 'Cloudflare') { last.w = 1; toast('Esta conexão passa por um servidor público intermediário e pode ficar lenta. Veja as estatísticas (S).', 'info'); }
   const L = {none: 'nenhuma', bandwidth: 'upload insuficiente', cpu: 'processador no limite', other: 'outra'};
   const rows = [[watching ? 'Tela de' : 'Enviando', watching ? who && who.name : 'sua tela'], ['Resolução', st.w + '×' + st.h], ['Quadros', st.fps + ' fps'], ['Taxa', st.mbps.toFixed(1) + ' Mbps'], ['Codec', st.codec],
-    ['Latência', rtt != null ? rtt + ' ms' : '-'], ['Conexão', rel ? 'via ' + relayName : 'direta']];
+    ['Latência', rtt != null ? rtt + ' ms' : '-'], ['Conexão', rel ? 'via ' + relayName + ' (IP protegido)' : 'direta']];
   if (st.loss != null) rows.push(['Pacotes perdidos', st.loss]);
   if (st.lim) rows.push(['Limitação', L[st.lim] || st.lim]);
   $('#stats').textContent = rows.map(r => r[0].padEnd(18, ' ') + r[1]).join('\n');
@@ -2001,8 +2002,3 @@ function setLock(on) {
   toast(on ? 'Sala trancada para novas pessoas' : 'Sala destrancada', 'ok');
 }
 act.lock = () => { nav(false); setLock(!roomLocked); };
-$('#hideIp').checked = S.hideIp;
-$('#hideIp').addEventListener('change', e => {
-  S.hideIp = e.target.checked; save();
-  toast(S.hideIp ? 'Seu IP fica escondido a partir da próxima conexão. Recarregue a página para aplicar.' : 'Conexão direta liberada. Recarregue a página para aplicar.', 'info', {label: 'Recarregar', fn: () => location.reload()});
-});
