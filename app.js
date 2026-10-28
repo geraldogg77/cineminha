@@ -99,7 +99,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 41;   // igual ao ?v= do app.js no index.html
+const APP_VER = 42;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -2354,7 +2354,7 @@ setInterval(() => { $$('.cimg[data-h]:not(.ok)').forEach(f => { const h = f.data
    As imagens vêm direto da KLIPY para cada pessoa (as regras deles não permitem guardar
    ou repassar as imagens). A mensagem leva só o endereço, e o anfitrião só aceita endereços da KLIPY.
    ====================================================================== */
-const KLIPY_KEY = '';
+const KLIPY_KEY = 'g1LMymTcEnn3iQmSaf9TmseZ5P7RjBytZg9qJ9GQaimSyMgpD8KZTMIiEfrMNUFH';
 function gifOk(g) {
   if (!g || typeof g !== 'object' || typeof g.u !== 'string' || g.u.length > 600) return null;
   let u; try { u = new URL(g.u); } catch (e) { return null; }
