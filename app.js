@@ -99,7 +99,7 @@ const narrow = () => matchMedia('(max-width:900px)').matches;
    A foto fica no IndexedDB deste navegador. Pela sala só viaja um código (hash) de cada foto;
    quem ainda não tem uma foto pede ao anfitrião, que repassa em pedaços uma única vez, e cada
    navegador guarda as fotos recebidas para as próximas visitas. */
-const APP_VER = 46;   // igual ao ?v= do app.js no index.html
+const APP_VER = 47;   // igual ao ?v= do app.js no index.html
 const AV_MAX = 15 * 1024 * 1024, AV_CHUNK = 64 * 1024, AV_LEGACY = 600 * 1024;
 const avatars = {};             // nome → hash da foto
 const avStill = {};             // hash → primeiro quadro do GIF (parado)
@@ -2381,6 +2381,7 @@ function pickFmt(file, sizes) {
 async function gpLoad(reset) {
   if (!KLIPY_KEY) return;
   if (reset) { GP.page = 1; GP.more = true; gpGrid.textContent = ''; gpGrid.scrollTop = 0; }
+  gpGrid.classList.toggle('stk', GP.tab === 'stickers');
   if (!gpGrid.querySelector('.gpcol')) { gpGrid.textContent = ''; for (let i = 0; i < 2; i++) { const c = document.createElement('div'); c.className = 'gpcol'; gpGrid.append(c); } }
   if (GP.busy || !GP.more) return;
   GP.busy = true; const seq = ++GP.seq; gpBox.classList.add('busy');
